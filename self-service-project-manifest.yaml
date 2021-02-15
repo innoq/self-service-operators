@@ -1,0 +1,11 @@
+# self service sample project manifest (auto-generated with 'self-service-operator --print-sample-project-manifest'):
+---
+apiVersion: selfservice.innoq.io/v1
+kind: Project
+metadata:
+  name: sample-self-service-project
+spec:
+  owner: superdev@example.com
+  private: false
+
+
