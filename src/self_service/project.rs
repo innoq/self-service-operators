@@ -7,10 +7,10 @@ use kube::CustomResource;
 // use kube::api::ListParams;
 use super::Sample;
 use crate::project::ProjectPhase::Initializing;
+use futures::StreamExt;
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tokio_stream::StreamExt;
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
 #[derive(CustomResource, Serialize, Deserialize, PartialEq, Default, Debug, Clone, JsonSchema)]
