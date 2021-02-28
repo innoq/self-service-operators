@@ -23,6 +23,10 @@ spec:
           jsonPath: ".spec.private"
           name: Private
           type: string
+        - description: how old this resource is
+          jsonPath: ".metadata.creationTimestamp"
+          name: Age
+          type: date
       name: v1
       schema:
         openAPIV3Schema:

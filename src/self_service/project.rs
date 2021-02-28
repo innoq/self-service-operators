@@ -24,7 +24,8 @@ use tokio::sync::RwLock;
     shortname = "ssp",
     printcolumn = r#"
      {"name":"Owner", "type":"string", "description":"owner of this project", "jsonPath":".spec.owner"},
-     {"name":"Private", "type":"string", "description":"whether the projects's namespace is private", "jsonPath":".spec.private"}
+     {"name":"Private", "type":"string", "description":"whether the projects's namespace is private", "jsonPath":".spec.private"},
+     {"name":"Age", "type":"date", "description":"how old this resource is", "jsonPath":".metadata.creationTimestamp"}
   "#
 )]
 
