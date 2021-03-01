@@ -13,6 +13,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{ObjectMeta, PostParams};
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
@@ -58,7 +59,21 @@ impl Default for Project {
 
 impl Sample for Project {
     fn sample() -> Self {
-        Project::new("sample-self-service-project", ProjectSpec::sample())
+        let mut project = Project::new("sample-self-service-project", ProjectSpec::sample());
+        let mut annotations = BTreeMap::new();
+        annotations.insert(
+            "project.selfservice.innoq.io/argocd.project".to_string(),
+            "copy".to_string(),
+        );
+        annotations.insert(
+            "project.selfservice.innoq.io/gitlabci-container-registry-secrets.public-key"
+                .to_string(),
+            "skip".to_string(),
+        );
+
+        project.metadata.annotations = Some(annotations);
+
+        project
     }
 }
 
