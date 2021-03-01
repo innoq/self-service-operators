@@ -31,7 +31,8 @@ pub async fn before_each() -> anyhow::Result<(config::Config, kube::Client)> {
         if !INITIALIZED {
             let _ = reinstall_self_service_crd(&client).await?;
 
-            let mut runtime = OperatorRuntime::new(&config, project::ProjectOperator::new(), None);
+            let mut runtime =
+                OperatorRuntime::new(&config, project::ProjectOperator::new(client.clone()), None);
 
             tokio::spawn(async move { runtime.start().await });
             INITIALIZED = true;

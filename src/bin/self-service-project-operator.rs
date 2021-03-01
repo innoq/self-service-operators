@@ -71,14 +71,12 @@ async fn main() -> anyhow::Result<()> {
 
     let kubeconfig = kube::config::Config::infer().await?;
 
-    {
-        let client = kube::Client::new(kubeconfig.clone());
-        if opts.install_crd {
-            return helper::install_crd(&client, &project::Project::crd()).await;
-        }
+    let client = kube::Client::new(kubeconfig.clone());
+    if opts.install_crd {
+        return helper::install_crd(&client, &project::Project::crd()).await;
     }
 
-    let tracker = project::ProjectOperator::new();
+    let tracker = project::ProjectOperator::new(client);
 
     // Only track mooses in Glacier NP
     // let params = ListParams::default().labels("nps.gov/park=glacier");

@@ -8,6 +8,9 @@ use kube::CustomResource;
 use super::Sample;
 use crate::project::ProjectPhase::Initializing;
 use futures::StreamExt;
+use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use kube::api::{ObjectMeta, PostParams};
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -70,6 +73,7 @@ enum ProjectPhase {
     Initializing,
     CreatingNamespace,
     SettingUpRBACPermissions,
+    FailedDueToError,
     WaitingForChanges,
 }
 
@@ -108,6 +112,8 @@ impl ObjectStatus for ProjectStatus {
 
 pub struct ProjectState {
     name: String,
+    spec: ProjectSpec,
+    error: String,
 }
 
 #[async_trait::async_trait]
@@ -152,22 +158,46 @@ impl State<ProjectState> for NewProject {
     }
 }
 
-// Derive TransitionTo
 #[derive(Debug, Default)]
 /// Project is creating a namespace
 struct CreateNamespace;
-
 impl TransitionTo<SetupRBACPermissions> for CreateNamespace {}
+impl TransitionTo<Error> for CreateNamespace {}
 #[async_trait::async_trait]
 impl State<ProjectState> for CreateNamespace {
     async fn next(
         self: Box<Self>,
-        _shared: Arc<RwLock<SharedState>>,
+        shared: Arc<RwLock<SharedState>>,
         state: &mut ProjectState,
-        _manifest: Manifest<Project>,
+        manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
-        debug!("next() in CreateNamespace / name: {}", state.name);
-        Transition::next(self, SetupRBACPermissions)
+        info!("creating namespace {}", &state.name);
+
+        let api: kube::Api<Namespace> = kube::Api::all(shared.read().await.client.clone());
+        let manifest = manifest.latest();
+
+        let namespace = Namespace {
+            metadata: ObjectMeta {
+                name: Some(state.name.clone()),
+                owner_references: Some(vec![OwnerReference {
+                    api_version: manifest.api_version,
+                    block_owner_deletion: None,
+                    controller: None,
+                    kind: manifest.kind,
+                    name: state.name.clone(),
+                    uid: manifest.metadata.uid.unwrap(),
+                }]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        if let Err(e) = api.create(&PostParams::default(), &namespace).await {
+            state.error = format!("error creating namespace {}: {}", state.name, e.to_string());
+            Transition::next(self, Error)
+        } else {
+            Transition::next(self, SetupRBACPermissions)
+        }
     }
 
     async fn status(
@@ -179,6 +209,39 @@ impl State<ProjectState> for CreateNamespace {
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::CreatingNamespace),
             message: Some(format!("creating namespace {}", state.name)),
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+/// Something went wrong
+struct Error;
+impl TransitionTo<Error> for Error {}
+
+#[async_trait::async_trait]
+impl State<ProjectState> for Error {
+    async fn next(
+        self: Box<Self>,
+        _shared: Arc<RwLock<SharedState>>,
+        state: &mut ProjectState,
+        _manifest: Manifest<Project>,
+    ) -> Transition<ProjectState> {
+        info!("error {}", &state.name);
+
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+
+        Transition::next(self, Error)
+    }
+
+    async fn status(
+        &self,
+        state: &mut ProjectState,
+        _manifest: &Project,
+    ) -> anyhow::Result<ProjectStatus> {
+        debug!("status() in Error");
+        Ok(ProjectStatus {
+            phase: Some(ProjectPhase::FailedDueToError),
+            message: Some(format!("error: {}", state.error)),
         })
     }
 }
@@ -287,15 +350,23 @@ pub struct EnvRepo {
     pub directory: String,
 }
 
-pub struct SharedState {}
+pub struct SharedState {
+    client: kube::Client,
+}
+
+impl SharedState {
+    pub fn client(&self) -> kube::Client {
+        self.client.clone()
+    }
+}
 
 pub struct ProjectOperator {
     shared: Arc<RwLock<SharedState>>,
 }
 
 impl ProjectOperator {
-    pub fn new() -> Self {
-        let shared = Arc::new(RwLock::new(SharedState {}));
+    pub fn new(client: kube::Client) -> Self {
+        let shared = Arc::new(RwLock::new(SharedState { client: client }));
         ProjectOperator { shared }
     }
 }
@@ -313,7 +384,12 @@ impl Operator for ProjectOperator {
         manifest: &Self::Manifest,
     ) -> anyhow::Result<Self::ObjectState> {
         let name = manifest.metadata().name.clone().unwrap();
-        Ok(ProjectState { name })
+        let spec = manifest.spec.clone();
+        Ok(ProjectState {
+            name: name,
+            spec: spec,
+            error: "".to_string(),
+        })
     }
 
     async fn shared_state(&self) -> Arc<RwLock<SharedState>> {

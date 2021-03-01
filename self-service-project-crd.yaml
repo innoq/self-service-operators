@@ -57,6 +57,7 @@ spec:
                     - Initializing
                     - CreatingNamespace
                     - SettingUpRBACPermissions
+                    - FailedDueToError
                     - WaitingForChanges
                   nullable: true
                   type: string
