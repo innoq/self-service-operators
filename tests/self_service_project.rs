@@ -2,6 +2,7 @@ use crate::common::WaitForState;
 use futures::join;
 use futures::try_join;
 use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::api_version;
 use kube::api::{DeleteParams, PostParams};
 use noqnoqnoq::project;
 use noqnoqnoq::self_service::Sample;
@@ -60,8 +61,11 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
 
     let owner = &owners[0];
     assert!(
-        owner.name == name && owner.kind == project.kind,
-        "namespacefutures::future::try_joinr reference should point to the new project"
+        owner.api_version == project.api_version
+            && owner.controller == Some(true)
+            && owner.kind == project.kind
+            && owner.name == name,
+        "project should be the owner of the namespace"
     );
 
     let wait_for_project_deleted_handle =

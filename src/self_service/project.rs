@@ -197,7 +197,7 @@ impl State<ProjectState> for CreateNamespace {
                 owner_references: Some(vec![OwnerReference {
                     api_version: manifest.api_version,
                     block_owner_deletion: None,
-                    controller: None,
+                    controller: Some(true),
                     kind: manifest.kind,
                     name: state.name.clone(),
                     uid: manifest.metadata.uid.unwrap(),
