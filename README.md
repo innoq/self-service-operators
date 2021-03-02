@@ -53,7 +53,7 @@ project.selfservice.innoq.io/<secret-name>.<data-item-name>: copy # allowed valu
 
 If the value of the annotation is `copy`, this manifest will be applied in the new namespace. The operator can be configured with default manifests -- if a default manifest should be ommited, it's possible to explicitly set the value `skip` for this manifest.
 
-If a manifest contains `{owner}`, the occurence will be replaced by the value of the `owner` of the project. Likewise, occurences with `{project}` will be replaced by the project's / namespace's name.
+If a manifest contains `{{owner}}`, the occurence will be replaced by the value of the `owner` of the project. Likewise, occurences with `{{project}}` will be replaced by the project's / namespace's name.
 
 #### Example
 
@@ -63,8 +63,8 @@ On namespace creation, add a role binding that grants all users of the group `em
 # service account
 kubectl create serviceaccount --dry-run=client -oyaml viewer > viewer-sa.yaml
 
-# rolebinding (note the '{project}' placeholder)
-kubectl create rolebinding --dry-run=client --clusterrole=view --serviceaccount="{project}:viewer" --group=employees -oyaml viewer-binding > viewer-binding.yaml
+# rolebinding (note the '{{project}}' placeholder)
+kubectl create rolebinding --dry-run=client --clusterrole=view --serviceaccount="{{project}}:viewer" --group=employees -oyaml viewer-binding > viewer-binding.yaml
 
 # save these two manifests in a secret for usage by the operator
 kubectl create secret generic --from-file=viewer-sa=viewer-sa.yaml --from-file=viewer-bindings=viewer-binding.yaml -oyaml permissions

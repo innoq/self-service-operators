@@ -7,6 +7,11 @@ description = "s5 operator"
 repository = "https://gitlab.innoq.com/daniel/noqnoqnoq"
 readme = "README.md"
 
+# need this for `cargo-build-dependencies`
+[lib]
+name = "noqnoqnoq"
+path = "src/lib.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 anyhow = "1.0"
@@ -36,3 +41,5 @@ git = "https://github.com/deislabs/krustlet.git"
 branch = "master"
 default-features = false
 
+[dev-dependencies]
+serial_test = "*"

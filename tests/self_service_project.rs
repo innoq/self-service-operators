@@ -1,11 +1,8 @@
 use crate::common::WaitForState;
-use futures::join;
-use futures::try_join;
 use k8s_openapi::api::core::v1::Namespace;
-use k8s_openapi::api_version;
-use kube::api::{DeleteParams, PostParams};
+use kube::api::DeleteParams;
 use noqnoqnoq::project;
-use noqnoqnoq::self_service::Sample;
+use serial_test::serial;
 use std::time::Duration;
 use tokio::select;
 use tokio::time;
@@ -13,69 +10,30 @@ use tokio::time;
 mod common;
 
 #[tokio::test]
+#[serial]
 async fn it_creates_namespace() -> anyhow::Result<()> {
     let timeout_secs = 10;
-    let (_config, client) = common::before_each().await?;
+    let client = common::before_each().await?;
 
-    let name = common::random_name("project");
-    let project_api: kube::Api<project::Project> = kube::Api::all(client.clone());
-
-    let wait_for_project_created_handle =
-        common::wait_for_state::<project::Project>(&client, &name, WaitForState::Created);
-    let wait_for_namespace_created_handle =
-        common::wait_for_state::<Namespace>(&client, &name, common::WaitForState::Created);
-
-    let project = project::Project::new(name.as_str(), project::ProjectSpec::sample());
-    assert!(
-        project_api
-            .create(&PostParams::default(), &project)
-            .await
-            .is_ok(),
-        "creating a new self service project should work correclty"
-    );
-
-    // assert!(
-    //     wait_for_project_created_handle.await.is_ok(),
-    //     "expected project resource to be created successfully"
-    // );
-
-    assert!(
-        select! {
-        res = futures::future::try_join(wait_for_namespace_created_handle, wait_for_project_created_handle) => res.is_ok(),
-            _ = time::sleep(Duration::from_secs(timeout_secs)) => false,
-        },
-        "expected project related namespace {} to be created within {} seconds",
-        name,
-        timeout_secs
-    );
+    let (project, name) = common::install_project(&client, "namespace-test").await?;
 
     let ns_api: kube::Api<Namespace> = kube::Api::all(client.clone());
+
     let new_namespace = ns_api.get(&name).await?;
 
-    assert!(
-        new_namespace.metadata.owner_references.is_some(),
-        "namespace should have owner reference"
-    );
-    let owners = new_namespace.metadata.owner_references.unwrap();
-    assert!(owners.len() > 0, "namespace should have at least one owner");
+    let _ = common::is_owned_by_project(&project, &new_namespace);
 
-    let owner = &owners[0];
-    assert!(
-        owner.api_version == project.api_version
-            && owner.controller == Some(true)
-            && owner.kind == project.kind
-            && owner.name == name,
-        "project should be the owner of the namespace"
+    let wait_for_project_deleted_handle = common::wait_for_state(
+        &kube::Api::<project::Project>::all(client.clone()),
+        &name,
+        WaitForState::Deleted,
     );
-
-    let wait_for_project_deleted_handle =
-        common::wait_for_state::<project::Project>(&client, &name, WaitForState::Deleted);
 
     let wait_for_namespace_deleted_handle =
-        common::wait_for_state::<Namespace>(&client, &name, WaitForState::Deleted);
+        common::wait_for_state(&ns_api, &name, WaitForState::Deleted);
 
     assert!(
-        project_api
+        kube::Api::<project::Project>::all(client.clone())
             .delete(name.as_str(), &DeleteParams::default())
             .await
             .is_ok(),
@@ -91,6 +49,22 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
         name,
         timeout_secs
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_creates_rolebinding() -> anyhow::Result<()> {
+    let client = common::before_each().await?;
+
+    let (_project, name) = common::install_project(&client, "rolebinding-test").await?;
+
+    // let rb_api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
+
+    kube::Api::<project::Project>::all(client.clone())
+        .delete(name.as_str(), &DeleteParams::default())
+        .await?;
 
     Ok(())
 }

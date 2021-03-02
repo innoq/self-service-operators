@@ -5,7 +5,7 @@ kind: Project
 metadata:
   annotations:
     project.selfservice.innoq.io/argocd.project: copy
-    project.selfservice.innoq.io/gitlabci-container-registry-secrets.public-key: skip
+    project.selfservice.innoq.io/gitlabci-container-registry-secrets.private-key: skip
   name: sample-self-service-project
 spec:
   owner: superdev@example.com

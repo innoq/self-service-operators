@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
+pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
+
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
 #[derive(CustomResource, Serialize, Deserialize, PartialEq, Default, Debug, Clone, JsonSchema)]
 /// a self service project that will create a namespace per project with the owner having cluster-admin
@@ -32,7 +34,6 @@ use tokio::sync::RwLock;
      {"name":"Age", "type":"date", "description":"how old this resource is", "jsonPath":".metadata.creationTimestamp"}
   "#
 )]
-
 pub struct ProjectSpec {
     /// Owner of this project -- this user will have cluster-admin rights within the created namespace
     /// it must be the user name of this user
@@ -47,6 +48,19 @@ impl Sample for ProjectSpec {
         ProjectSpec {
             owner: "superdev@example.com".to_string(),
             private: Some(false),
+        }
+    }
+}
+
+impl Into<OwnerReference> for Project {
+    fn into(self) -> OwnerReference {
+        OwnerReference {
+            api_version: self.api_version,
+            block_owner_deletion: None,
+            controller: Some(true),
+            kind: self.kind,
+            name: self.metadata.name.unwrap(),
+            uid: self.metadata.uid.unwrap(),
         }
     }
 }
@@ -66,7 +80,7 @@ impl Sample for Project {
             "copy".to_string(),
         );
         annotations.insert(
-            "project.selfservice.innoq.io/gitlabci-container-registry-secrets.public-key"
+            "project.selfservice.innoq.io/gitlabci-container-registry-secrets.private-key"
                 .to_string(),
             "skip".to_string(),
         );
@@ -127,7 +141,7 @@ impl ObjectStatus for ProjectStatus {
 
 pub struct ProjectState {
     name: String,
-    spec: ProjectSpec,
+    _spec: ProjectSpec,
     error: String,
 }
 
@@ -189,19 +203,12 @@ impl State<ProjectState> for CreateNamespace {
         info!("creating namespace {}", &state.name);
 
         let api: kube::Api<Namespace> = kube::Api::all(shared.read().await.client.clone());
-        let manifest = manifest.latest();
+        let project = manifest.latest();
 
         let namespace = Namespace {
             metadata: ObjectMeta {
-                name: Some(state.name.clone()),
-                owner_references: Some(vec![OwnerReference {
-                    api_version: manifest.api_version,
-                    block_owner_deletion: None,
-                    controller: Some(true),
-                    kind: manifest.kind,
-                    name: state.name.clone(),
-                    uid: manifest.metadata.uid.unwrap(),
-                }]),
+                name: Some(project.clone().metadata.name.unwrap()),
+                owner_references: Some(vec![project.into()]),
                 ..Default::default()
             },
             ..Default::default()
@@ -402,7 +409,7 @@ impl Operator for ProjectOperator {
         let spec = manifest.spec.clone();
         Ok(ProjectState {
             name: name,
-            spec: spec,
+            _spec: spec,
             error: "".to_string(),
         })
     }
