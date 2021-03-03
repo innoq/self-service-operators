@@ -92,7 +92,7 @@ where
         );
 
         let lp = &api::ListParams::default()
-            .timeout(10)
+            .timeout(60)
             .fields(format!("metadata.name={}", name).as_str());
 
         let resource_version = api
@@ -109,36 +109,51 @@ where
             |e: &WatchEvent<K>, resource: &K| {
                 println!(
                     "  - {:?} for {} with name {} received",
-                    e.clone(),
+                    e,
                     k8s::kind(resource),
                     resource.name()
                 );
             }
         };
 
-        // Observe the pods phase for 10 seconds
-        while let Some(status) = stream.try_next().await.unwrap() {
-            match status.clone() {
-                WatchEvent::Added(resource) => {
-                    print_info(&status, &resource);
-                    if let WaitForState::Created = state {
-                        break;
+        loop {
+            match stream.try_next().await {
+                Ok(Some(status)) => match status.clone() {
+                    WatchEvent::Added(resource) => {
+                        print_info(&status, &resource);
+                        if let WaitForState::Created = state {
+                            break;
+                        }
                     }
-                }
-                WatchEvent::Bookmark(bookmark) => {
-                    println!(" - {:?} for {}", status, bookmark.types.kind);
-                }
-                WatchEvent::Modified(resource) => {
-                    print_info(&status, &resource);
-                }
-                WatchEvent::Deleted(resource) => {
-                    print_info(&status, &resource);
-                    if let WaitForState::Deleted = state {
-                        break;
+                    WatchEvent::Bookmark(bookmark) => {
+                        println!(" - {:?} for {}", status, bookmark.types.kind);
                     }
+                    WatchEvent::Modified(resource) => {
+                        print_info(&status, &resource);
+                    }
+                    WatchEvent::Deleted(resource) => {
+                        print_info(&status, &resource);
+                        if let WaitForState::Deleted = state {
+                            break;
+                        }
+                    }
+                    WatchEvent::Error(e) => {
+                        println!(" - ERROR watching {} with name {}: {}", K::KIND, name, e);
+                    }
+                },
+                Ok(None) => {
+                    // happens, if nothing watchable was found (e.g. watching for somehing in a namespace
+                    // that does not exist yet
+                    println!(" - too early to watch {} with name {}", K::KIND, name,);
+                    tokio::time::sleep(time::Duration::from_millis(100)).await;
                 }
-                WatchEvent::Error(e) => {
-                    println!(" - ERROR watching {} with name {}: {}", K::KIND, name, e);
+                Err(e) => {
+                    println!(
+                        " - ERROR getting {} with name {} from stream: {}",
+                        K::KIND,
+                        name,
+                        e
+                    );
                 }
             }
         }
@@ -147,15 +162,14 @@ where
 
 pub async fn install_project(
     client: &kube::Client,
-    prefix: &str,
-) -> anyhow::Result<(project::Project, String)> {
+    name: &String,
+) -> anyhow::Result<project::Project> {
     let timeout_secs = 10;
-    let name = random_name(prefix);
     let project_api: kube::Api<project::Project> = kube::Api::all(client.clone());
 
     let wait_for_namespace_created_handle = wait_for_state(
         &kube::Api::<Namespace>::all(client.clone()),
-        &name,
+        name,
         WaitForState::Created,
     );
 
@@ -179,7 +193,7 @@ pub async fn install_project(
         timeout_secs
     );
 
-    Ok((project_resource.unwrap(), name))
+    Ok(project_resource.unwrap())
 }
 
 pub fn random_name(prefix: &str) -> String {

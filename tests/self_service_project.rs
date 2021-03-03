@@ -1,5 +1,6 @@
 use crate::common::WaitForState;
 use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::api::rbac::v1::RoleBinding;
 use kube::api::DeleteParams;
 use noqnoqnoq::project;
 use serial_test::serial;
@@ -15,7 +16,8 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
     let timeout_secs = 10;
     let client = common::before_each().await?;
 
-    let (project, name) = common::install_project(&client, "namespace-test").await?;
+    let name = common::random_name("namespace-test");
+    let project = common::install_project(&client, &name).await?;
 
     let ns_api: kube::Api<Namespace> = kube::Api::all(client.clone());
 
@@ -57,10 +59,25 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
 #[serial]
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let client = common::before_each().await?;
+    let timeout_secs = 6;
 
-    let (_project, name) = common::install_project(&client, "rolebinding-test").await?;
+    let name = common::random_name("rolebinding-test");
+    let rb_api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
+    let wait_for_rolebinding_created_handle = common::wait_for_state(
+        &rb_api,
+        &project::OWNER_ROLE_BINDING_NAME.to_string(),
+        WaitForState::Created,
+    );
+    let _project = common::install_project(&client, &name).await?;
 
-    // let rb_api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
+    assert!(
+        select! {
+        res = wait_for_rolebinding_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "rolebinding for the owner should be created within {} seconds",
+        timeout_secs
+    );
 
     kube::Api::<project::Project>::all(client.clone())
         .delete(name.as_str(), &DeleteParams::default())
