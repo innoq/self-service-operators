@@ -1,6 +1,7 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
+use anyhow::Context;
 use k8s_openapi::Metadata;
 use krator::{Manifest, ObjectState, ObjectStatus, Operator, State, Transition, TransitionTo};
 use kube::CustomResource;
@@ -9,6 +10,7 @@ use super::Sample;
 use crate::project::ProjectPhase::Initializing;
 use futures::StreamExt;
 use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::api::rbac::v1::{ClusterRole, RoleBinding, RoleRef, Subject};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{ObjectMeta, PostParams};
 pub use schemars::JsonSchema;
@@ -273,17 +275,49 @@ impl State<ProjectState> for Error {
 struct SetupRBACPermissions;
 
 impl TransitionTo<WaitForChanges> for SetupRBACPermissions {}
+impl TransitionTo<Error> for SetupRBACPermissions {}
 
 #[async_trait::async_trait]
 impl State<ProjectState> for SetupRBACPermissions {
     async fn next(
         self: Box<Self>,
-        _shared: Arc<RwLock<SharedState>>,
+        shared: Arc<RwLock<SharedState>>,
         state: &mut ProjectState,
-        _manifest: Manifest<Project>,
+        manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
+        info!("settign up rbac permissions namespace {}", &state.name);
         debug!("next() in SetupRBACPermissions / name: {}", state.name);
-        Transition::next(self, WaitForChanges)
+
+        let api: kube::Api<RoleBinding> =
+            kube::Api::namespaced(shared.read().await.client.clone(), &state.name);
+        let project = manifest.latest();
+
+        let rolebinding = RoleBinding {
+            metadata: ObjectMeta {
+                name: Some(OWNER_ROLE_BINDING_NAME.to_string()),
+                owner_references: Some(vec![project.clone().into()]),
+                ..Default::default()
+            },
+            role_ref: RoleRef {
+                api_group: "rbac.authorization.k8s.io".to_string(),
+                kind: "ClusterRole".to_string(),
+                name: shared.read().await.default_owner_cluster_role.clone(),
+            },
+            subjects: Some(vec![Subject {
+                api_group: None,
+                kind: "User".to_string(),
+                name: project.spec.owner,
+                namespace: None,
+            }]),
+            ..Default::default()
+        };
+
+        if let Err(e) = api.create(&PostParams::default(), &rolebinding).await {
+            state.error = format!("error creating namespace {}: {}", state.name, e.to_string());
+            Transition::next(self, Error)
+        } else {
+            Transition::next(self, WaitForChanges)
+        }
     }
 
     async fn status(
@@ -374,6 +408,7 @@ pub struct EnvRepo {
 
 pub struct SharedState {
     client: kube::Client,
+    default_owner_cluster_role: String,
 }
 
 impl SharedState {
@@ -387,9 +422,26 @@ pub struct ProjectOperator {
 }
 
 impl ProjectOperator {
-    pub fn new(client: kube::Client) -> Self {
-        let shared = Arc::new(RwLock::new(SharedState { client: client }));
-        ProjectOperator { shared }
+    pub async fn new(
+        client: kube::Client,
+        default_owner_cluster_role: String,
+    ) -> anyhow::Result<Self> {
+        let shared = Arc::new(RwLock::new(SharedState {
+            client: client.clone(),
+            default_owner_cluster_role: default_owner_cluster_role.clone(),
+        }));
+
+        let _ = kube::Api::<ClusterRole>::all(client.clone())
+            .get(default_owner_cluster_role.as_str())
+            .await
+            .with_context(|| {
+                format!(
+                    "no ClusterRole with name '{}' found -- aborting",
+                    default_owner_cluster_role
+                )
+            })?;
+
+        Ok(ProjectOperator { shared })
     }
 }
 

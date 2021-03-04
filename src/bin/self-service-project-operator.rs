@@ -34,6 +34,9 @@ struct Opts {
     /// verbose level
     #[clap(short, long, default_value = "info", possible_values = &["debug", "info", "warn", "error"]) ]
     verbose_level: String,
+
+    #[clap(short, long, default_value = "admin")]
+    default_owner_cluster_role: String,
 }
 
 #[tokio::main]
@@ -76,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
         return helper::install_crd(&client, &project::Project::crd()).await;
     }
 
-    let tracker = project::ProjectOperator::new(client);
+    let tracker = project::ProjectOperator::new(client, opts.default_owner_cluster_role).await?;
 
     // Only track mooses in Glacier NP
     // let params = ListParams::default().labels("nps.gov/park=glacier");

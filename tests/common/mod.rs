@@ -31,8 +31,13 @@ pub async fn before_each() -> anyhow::Result<kube::Client> {
     // there is probably a better way FnOnce?
     let _ = reinstall_self_service_crd(&client).await?;
 
-    let mut runtime =
-        OperatorRuntime::new(&config, project::ProjectOperator::new(client.clone()), None);
+    let mut runtime = OperatorRuntime::new(
+        &config,
+        project::ProjectOperator::new(client.clone(), "admin".to_string())
+            .await
+            .unwrap(),
+        None,
+    );
 
     tokio::spawn(async move { runtime.start().await });
 
@@ -59,10 +64,9 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
         _ => {}
     }
 
+    let wait_for_crd_created = wait_for_state(&api, &name, WaitForState::Created);
     noqnoqnoq::helper::install_crd(&client, &project::Project::crd()).await?;
-
-    // TODO: check ... k8s api reports delete event before it can accept resources of this type
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let _ = wait_for_crd_created.await?;
 
     Ok(())
 }
@@ -91,9 +95,7 @@ where
             state
         );
 
-        let lp = &api::ListParams::default()
-            .timeout(60)
-            .fields(format!("metadata.name={}", name).as_str());
+        let lp = &api::ListParams::default().fields(format!("metadata.name={}", name).as_str());
 
         let resource_version = api
             .list(&lp)
@@ -144,8 +146,9 @@ where
                 Ok(None) => {
                     // happens, if nothing watchable was found (e.g. watching for somehing in a namespace
                     // that does not exist yet
-                    println!(" - too early to watch {} with name {}", K::KIND, name,);
-                    tokio::time::sleep(time::Duration::from_millis(100)).await;
+                    println!("  - too early to watch {} with name {}", K::KIND, name,);
+                    tokio::time::sleep(time::Duration::from_millis(250)).await;
+                    break;
                 }
                 Err(e) => {
                     println!(
@@ -157,6 +160,8 @@ where
                 }
             }
         }
+        // again: Kubernetes-API does not seem to be strictly consistent ...
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     })
 }
 
