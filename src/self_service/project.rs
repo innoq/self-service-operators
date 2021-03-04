@@ -1,3 +1,4 @@
+use futures::{StreamExt, TryStreamExt};
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
@@ -11,12 +12,11 @@ use crate::project::ProjectPhase::Initializing;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, RoleBinding, RoleRef, Subject};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use kube::api::{ObjectMeta, PostParams};
+use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
-use tokio_stream::Stream;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 
@@ -338,22 +338,54 @@ impl State<ProjectState> for SetupRBACPermissions {
 struct WaitForChanges;
 impl TransitionTo<WaitForChanges> for WaitForChanges {}
 impl TransitionTo<CreateNamespace> for WaitForChanges {}
+impl TransitionTo<Error> for WaitForChanges {}
 
 #[async_trait::async_trait]
 impl State<ProjectState> for WaitForChanges {
     async fn next(
         self: Box<Self>,
-        _shared: Arc<RwLock<SharedState>>,
-        _state: &mut ProjectState,
+        shared: Arc<RwLock<SharedState>>,
+        state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
-        let mut x = manifest.latest();
-        debug!("entered WaitForChanges.next()");
-        while let Some(current) = x.changed().await {
-            info!(
-                "manifest for {} was updated",
-                current.metadata.name.unwrap()
-            );
+        let ssp_api = kube::Api::<Project>::all(shared.read().await.client.clone());
+        let lp = &ListParams::default().fields(format!("metadata.name={}", state.name).as_str());
+        let mut stream = ssp_api
+            .watch(
+                lp,
+                manifest
+                    .latest()
+                    .metadata
+                    .resource_version
+                    .unwrap()
+                    .as_str(),
+            )
+            .await
+            .unwrap()
+            .boxed();
+
+        loop {
+            match stream.try_next().await {
+                Ok(Some(status)) => match status.clone() {
+                    WatchEvent::Modified(resource) => {
+                        info!("project {} modified", state.name);
+                        break;
+                    }
+                    WatchEvent::Error(e) => {
+                        warn!("ERROR watching Project with name {}: {}", state.name, e);
+                    }
+                    _ => debug!(
+                        "unimplemented state while watching for changes on Project with name {}: {:?}",
+                        state.name,
+                        status
+                    ),
+                },
+                Err(e) => {
+                    state.error = e.to_string();
+                    return Transition::next(self, Error);
+                }
+                _ => {}
+            }
         }
 
         Transition::next(self, WaitForChanges)
