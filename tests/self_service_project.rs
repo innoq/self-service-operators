@@ -59,6 +59,19 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn it_should_not_fail_if_namespace_was_already_created_by_project() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_operator(
+) -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Result<()> {
     let kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
     let config =

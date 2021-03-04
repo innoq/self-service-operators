@@ -33,8 +33,9 @@ struct Opts {
 
     /// verbose level
     #[clap(short, long, default_value = "info", possible_values = &["debug", "info", "warn", "error"]) ]
-    verbose_level: String,
+    verbosity_level: String,
 
+    /// cluster role the owner of this project should get in the project namespace
     #[clap(short, long, default_value = "admin")]
     default_owner_cluster_role: String,
 }
@@ -44,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
     let opts: Opts = Opts::parse();
     let mut builder = Builder::from_default_env();
 
-    let level = match opts.verbose_level.as_str() {
+    let level = match opts.verbosity_level.as_str() {
         "debug" => LevelFilter::Debug,
         "info" => LevelFilter::Info,
         "warn" => LevelFilter::Warn,
@@ -52,7 +53,10 @@ async fn main() -> anyhow::Result<()> {
         _ => unreachable!(), // guarded by clap / getops config further up
     };
 
-    builder.filter(Some("noqnoqnoq"), level).init();
+    builder
+        .filter(Some("noqnoqnoq"), level)
+        .filter(Some("self_service_project_operator"), level)
+        .init();
 
     debug!("logging level set to 'debug' -- don't use this in production as it can pontentially leak sensible information");
 

@@ -8,7 +8,6 @@ use kube::CustomResource;
 // use kube::api::ListParams;
 use super::Sample;
 use crate::project::ProjectPhase::Initializing;
-use futures::StreamExt;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, RoleBinding, RoleRef, Subject};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
@@ -17,6 +16,7 @@ pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
+use tokio_stream::Stream;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 
@@ -347,8 +347,9 @@ impl State<ProjectState> for WaitForChanges {
         _state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
-        let mut x = manifest.clone();
-        while let Some(current) = x.next().await {
+        let mut x = manifest.latest();
+        debug!("entered WaitForChanges.next()");
+        while let Some(current) = x.changed().await {
             info!(
                 "manifest for {} was updated",
                 current.metadata.name.unwrap()
