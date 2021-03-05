@@ -103,8 +103,8 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let client = common::before_each().await?;
     let timeout_secs = 6;
-
     let name = common::random_name("rolebinding-test");
+
     let project = common::install_project(&client, &name).await?;
 
     let rb_api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());

@@ -97,13 +97,26 @@ where
 
         let lp = &api::ListParams::default().fields(format!("metadata.name={}", name).as_str());
 
-        let resource_version = api
-            .list(&lp)
-            .await
-            .unwrap()
-            .metadata
-            .resource_version
-            .unwrap();
+        let resource_version;
+        loop {
+            match api.list(&lp).await {
+                Ok(list) => {
+                    resource_version = list.metadata.resource_version.unwrap();
+                    break;
+                }
+                _ => {
+                    tokio::time::sleep(time::Duration::from_millis(100));
+                }
+            }
+        }
+
+        // check whether state is already reached before starting a watch
+        let get_res = api.get(&name).await;
+        match state {
+            WaitForState::Created if get_res.is_ok() => return (),
+            WaitForState::Deleted if get_res.is_err() => return (),
+            _ => {}
+        }
 
         let mut stream = api.watch(lp, &resource_version).await.unwrap().boxed();
 
@@ -161,7 +174,7 @@ where
             }
         }
         // again: Kubernetes-API does not seem to be strictly consistent ...
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     })
 }
 
@@ -186,7 +199,8 @@ pub async fn install_project(
 
     assert!(
         project_resource.is_ok(),
-        "creating a new self service project should work correclty"
+        "creating a new self service project should work correclty: {}",
+        project_resource.err().unwrap()
     );
     assert!(
         select! {
