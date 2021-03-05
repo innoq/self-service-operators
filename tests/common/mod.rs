@@ -95,7 +95,9 @@ where
             state
         );
 
-        let lp = &api::ListParams::default().fields(format!("metadata.name={}", name).as_str());
+        let lp = &api::ListParams::default()
+            .timeout(10)
+            .fields(format!("metadata.name={}", name).as_str());
 
         let resource_version;
         loop {
@@ -105,7 +107,7 @@ where
                     break;
                 }
                 _ => {
-                    tokio::time::sleep(time::Duration::from_millis(100));
+                    tokio::time::sleep(time::Duration::from_millis(100)).await;
                 }
             }
         }

@@ -1,6 +1,6 @@
 use crate::common::WaitForState;
 use k8s_openapi::api::core::v1::Namespace;
-use k8s_openapi::api::rbac::v1::RoleBinding;
+use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
 use kube::api::DeleteParams;
 use kube::config;
 use noqnoqnoq::project;
@@ -59,14 +59,140 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "not yet implemented"]
 async fn it_should_not_fail_if_namespace_was_already_created_by_project() -> anyhow::Result<()> {
+    // later: we can't check the status atm
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
+#[ignore = "not yet implemented"]
 async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_operator(
 ) -> anyhow::Result<()> {
+    // later: we can't check the status atm
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project_cr(
+) -> anyhow::Result<()> {
+    let client = common::before_each().await?;
+    let timeout_secs = 6;
+    let name = common::random_name("owner-cluster-role-test");
+
+    let project = common::install_project(&client, &name).await?;
+
+    let cr_api = kube::Api::<ClusterRole>::all(client.clone());
+    let crb_api = kube::Api::<ClusterRoleBinding>::all(client.clone());
+
+    let wait_for_clusterrole_created_handle = common::wait_for_state(
+        &cr_api,
+        &project.owner_cluster_role_name(),
+        WaitForState::Created,
+    );
+
+    let wait_for_clusterrolebinding_created_handle = common::wait_for_state(
+        &crb_api,
+        &project.owner_cluster_role_name(),
+        WaitForState::Created,
+    );
+
+    assert!(
+        select! {
+        res = wait_for_clusterrole_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "clusterrole for the owner should be created within {} seconds",
+        timeout_secs
+    );
+
+    assert!(
+        select! {
+        res = wait_for_clusterrolebinding_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "clusterrolebinding for the owner should be created within {} seconds",
+        timeout_secs
+    );
+
+    let cr = cr_api.get(&project.owner_cluster_role_name()).await?;
+    assert!(
+        common::is_owned_by_project(&project, &cr).is_ok(),
+        "owner cluster role should be owned by project"
+    );
+
+    assert!(cr.rules.is_some(), "cluster role should have rules");
+    let rule = &cr.rules.unwrap()[0];
+    // assert_eq!(
+    //     rule.api_groups,
+    //     Some(vec![project.group]),
+    //     "owner cluster role should have correct api group set"
+    // );
+    assert_eq!(
+        rule.resource_names,
+        Some(vec![project.metadata.name.clone().unwrap()]),
+        "owner cluster role should limit role to this specific project"
+    );
+    assert_eq!(
+        rule.resources,
+        Some(vec![project.clone().kind]),
+        "owner cluster role should have correct resource set"
+    );
+    assert_eq!(
+        rule.verbs,
+        vec![
+            "get".to_string(),
+            "list".to_string(),
+            "watch".to_string(),
+            "create".to_string(),
+            "update".to_string(),
+            "patch".to_string(),
+            "delete".to_string(),
+        ],
+        "owner cluster role should have correct verbs set"
+    );
+
+    let crb = crb_api.get(&project.owner_cluster_role_name()).await?;
+    assert!(
+        common::is_owned_by_project(&project, &crb).is_ok(),
+        "owner cluster role binding should be owned by project"
+    );
+
+    assert_eq!(
+        crb.role_ref.kind,
+        "ClusterRole".to_string(),
+        "owner rolebinding role-ref kind should be ClusterRole"
+    );
+
+    assert_eq!(
+        crb.role_ref.name,
+        project.owner_cluster_role_name(),
+        "owner rolebinding role-ref name should be correct"
+    );
+
+    assert!(
+        crb.subjects.is_some(),
+        "cluster role binding should have subjects"
+    );
+
+    let subject = &crb.subjects.unwrap()[0];
+
+    assert_eq!(
+        subject.kind,
+        "User".to_string(),
+        "cluster role binding subject kind should be correct"
+    );
+    assert_eq!(
+        subject.name, project.spec.owner,
+        "cluster role binding subject name should be correct"
+    );
+
+    kube::Api::<project::Project>::all(client.clone())
+        .delete(name.as_str(), &DeleteParams::default())
+        .await?;
+
     Ok(())
 }
 

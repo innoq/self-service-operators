@@ -10,8 +10,11 @@ use kube::CustomResource;
 use super::Sample;
 use crate::project::ProjectPhase::Initializing;
 use k8s_openapi::api::core::v1::Namespace;
-use k8s_openapi::api::rbac::v1::{ClusterRole, RoleBinding, RoleRef, Subject};
+use k8s_openapi::api::rbac::v1::{
+    ClusterRole, ClusterRoleBinding, PolicyRule, RoleBinding, RoleRef, Subject,
+};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use k8s_openapi::Resource;
 use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -54,6 +57,12 @@ impl Sample for ProjectSpec {
     }
 }
 
+impl Project {
+    pub fn owner_cluster_role_name(&self) -> String {
+        format!("{}-project-owner", self.metadata.name.as_ref().unwrap())
+    }
+}
+
 impl Into<OwnerReference> for Project {
     fn into(self) -> OwnerReference {
         OwnerReference {
@@ -82,7 +91,7 @@ impl Sample for Project {
             "copy".to_string(),
         );
         annotations.insert(
-            "project.selfservice.innoq.io/gitlabci-container-registry-secrets.private-key"
+            "project.selfservice.innoq.io/gitlab-container-registry-secrets.private-key"
                 .to_string(),
             "skip".to_string(),
         );
@@ -116,13 +125,6 @@ pub struct ProjectStatus {
 }
 
 impl ObjectStatus for ProjectStatus {
-    fn failed(e: &str) -> ProjectStatus {
-        ProjectStatus {
-            message: Some(format!("Error occured: {}", e)),
-            phase: None,
-        }
-    }
-
     fn json_patch(&self) -> serde_json::Value {
         debug!("json_patch called {:?}", self);
         // Generate a map containing only set fields.
@@ -138,6 +140,13 @@ impl ObjectStatus for ProjectStatus {
 
         // Create status patch with map.
         serde_json::json!({ "status": serde_json::Value::Object(status) })
+    }
+
+    fn failed(e: &str) -> ProjectStatus {
+        ProjectStatus {
+            message: Some(format!("Error occurred: {}", e)),
+            phase: None,
+        }
     }
 }
 
@@ -285,11 +294,9 @@ impl State<ProjectState> for SetupRBACPermissions {
         state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
-        info!("settign up rbac permissions namespace {}", &state.name);
+        info!("setting up rbac permissions namespace {}", &state.name);
         debug!("next() in SetupRBACPermissions / name: {}", state.name);
 
-        let api: kube::Api<RoleBinding> =
-            kube::Api::namespaced(shared.read().await.client.clone(), &state.name);
         let project = manifest.latest();
 
         let rolebinding = RoleBinding {
@@ -306,18 +313,97 @@ impl State<ProjectState> for SetupRBACPermissions {
             subjects: Some(vec![Subject {
                 api_group: None,
                 kind: "User".to_string(),
-                name: project.spec.owner,
+                name: project.clone().spec.owner,
                 namespace: None,
             }]),
             ..Default::default()
         };
 
-        if let Err(e) = api.create(&PostParams::default(), &rolebinding).await {
-            state.error = format!("error creating namespace {}: {}", state.name, e.to_string());
-            Transition::next(self, Error)
-        } else {
-            Transition::next(self, WaitForChanges)
+        {
+            let api: kube::Api<RoleBinding> =
+                kube::Api::namespaced(shared.read().await.client.clone(), &state.name);
+            if let Err(e) = api.create(&PostParams::default(), &rolebinding).await {
+                state.error = format!(
+                    "error creating rolebinding {} in namespace {}: {}",
+                    OWNER_ROLE_BINDING_NAME,
+                    state.name,
+                    e.to_string()
+                );
+                return Transition::next(self, Error);
+            }
         }
+
+        let owner_cluster_role = ClusterRole {
+            aggregation_rule: None,
+            metadata: ObjectMeta {
+                name: Some(project.owner_cluster_role_name()),
+                owner_references: Some(vec![project.clone().into()]),
+                ..Default::default()
+            },
+            rules: Some(vec![PolicyRule {
+                api_groups: Some(vec![Project::GROUP.to_string()]),
+                non_resource_urls: None,
+                resource_names: Some(vec![state.name.clone()]),
+                resources: Some(vec![Project::KIND.to_string()]),
+                verbs: vec![
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "create".to_string(),
+                    "update".to_string(),
+                    "patch".to_string(),
+                    "delete".to_string(),
+                ],
+            }]),
+        };
+        let api: kube::Api<ClusterRole> = kube::Api::all(shared.read().await.client.clone());
+        if let Err(e) = api
+            .create(&PostParams::default(), &owner_cluster_role)
+            .await
+        {
+            state.error = format!(
+                "error creating owner cluster role {}: {}",
+                project.owner_cluster_role_name(),
+                e.to_string()
+            );
+            return Transition::next(self, Error);
+        }
+
+        let owner_cluster_role_binding = ClusterRoleBinding {
+            metadata: ObjectMeta {
+                name: Some(project.owner_cluster_role_name()),
+                owner_references: Some(vec![project.clone().into()]),
+                ..Default::default()
+            },
+            role_ref: RoleRef {
+                api_group: ClusterRole::GROUP.to_string(),
+                kind: ClusterRole::KIND.to_string(),
+                name: project.owner_cluster_role_name(),
+            },
+            subjects: Some(vec![Subject {
+                api_group: None,
+                kind: "User".to_string(),
+                name: project.spec.owner.clone(),
+                namespace: None,
+            }]),
+        };
+        {
+            let api: kube::Api<ClusterRoleBinding> =
+                kube::Api::all(shared.read().await.client.clone());
+            if let Err(e) = api
+                .create(&PostParams::default(), &owner_cluster_role_binding)
+                .await
+            {
+                state.error = format!(
+                    "error creating owner cluster role binding {}: {}",
+                    project.owner_cluster_role_name(),
+                    e.to_string()
+                );
+                return Transition::next(self, Error);
+            }
+        }
+
+        Transition::next(self, WaitForChanges)
     }
 
     async fn status(
@@ -367,12 +453,12 @@ impl State<ProjectState> for WaitForChanges {
         loop {
             match stream.try_next().await {
                 Ok(Some(status)) => match status.clone() {
-                    WatchEvent::Modified(resource) => {
+                    WatchEvent::Modified(_resource) => {
                         info!("project {} modified", state.name);
                         break;
                     }
                     WatchEvent::Error(e) => {
-                        warn!("ERROR watching Project with name {}: {}", state.name, e);
+                        warn!("ERROR watching Project with name {}: {}", state.name, e.message);
                     }
                     _ => debug!(
                         "unimplemented state while watching for changes on Project with name {}: {:?}",
@@ -482,9 +568,9 @@ impl ProjectOperator {
 impl Operator for ProjectOperator {
     type Manifest = Project;
     type Status = ProjectStatus;
+    type ObjectState = ProjectState;
     type InitialState = NewProject;
     type DeletedState = Released;
-    type ObjectState = ProjectState;
 
     async fn initialize_object_state(
         &self,
@@ -493,7 +579,7 @@ impl Operator for ProjectOperator {
         let name = manifest.metadata().name.clone().unwrap();
         let spec = manifest.spec.clone();
         Ok(ProjectState {
-            name: name,
+            name,
             _spec: spec,
             error: "".to_string(),
         })
