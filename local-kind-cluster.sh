@@ -91,7 +91,7 @@ pause_kind_cluster() {           # pauses the kind cluster
 }
 
 unpause_kind_cluster() {         # pauses the kind cluster
-  docker unpause ${CLUSTER_NAME}-control-plane
+  docker unpause ${CLUSTER_NAME}-control-plane || docker start ${CLUSTER_NAME}-control-plane
 }
 
 install_ingress_controller() {   # installs and sets up ingress controller

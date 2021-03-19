@@ -1,5 +1,6 @@
 use crate::common::WaitForState;
-use k8s_openapi::api::core::v1::Namespace;
+use http::Request;
+use k8s_openapi::api::core::v1::{Namespace, Pod};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
 use kube::api::DeleteParams;
 use kube::config;
@@ -285,6 +286,131 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
     assert_eq!(
         rb.role_ref.kind, "ClusterRole",
         "role-ref kind should be correct"
+    );
+
+    kube::Api::<project::Project>::all(client.clone())
+        .delete(name.as_str(), &DeleteParams::default())
+        .await?;
+
+    Ok(())
+}
+
+use noqnoqnoq::self_service::helper;
+
+#[tokio::test]
+#[serial]
+async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<()> {
+    let client = common::before_each().await?;
+    // Create a pod from JSON
+    let pod_manifest = include_str!("pod.yaml");
+    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await?;
+    assert_eq!("/api/v1/namespaces/xxx/pods".to_string(), pod_api_path);
+
+    let deploy_manifest = include_str!("deployment.yaml");
+    let deploy_api_path = helper::resource_path(&client, deploy_manifest, "xxx").await?;
+    assert_eq!(
+        "/apis/apps/v1/namespaces/xxx/deployments".to_string(),
+        deploy_api_path
+    );
+
+    let role_manifest = include_str!("role.yaml");
+    let role_api_path = helper::resource_path(&client, role_manifest, "xxx").await?;
+    assert_eq!(
+        "/apis/rbac.authorization.k8s.io/v1/namespaces/xxx/roles".to_string(),
+        role_api_path
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_rejects_cluster_wide_manifests() -> anyhow::Result<()> {
+    let client = common::before_each().await?;
+    let self_service_project_manifest = include_str!("../self-service-project-manifest.yaml");
+    let self_service_project_path =
+        helper::resource_path(&client, self_service_project_manifest, "xxx").await;
+    assert!(
+        self_service_project_path.is_err(),
+        "cluster non-namespaced resources should yield an error"
+    );
+
+    assert_eq!(
+        self_service_project_path
+            .err()
+            .unwrap()
+            .to_string()
+            .as_str(),
+        "only namespaced resources are supported: selfservice.innoq.io/v1/Project with name 'sample-self-service-project' is a cluster resource"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_rejects_manifests_with_a_set_namespace() -> anyhow::Result<()> {
+    let client = common::before_each().await?;
+    // Create a pod from JSON
+    let pod_manifest = include_str!("namespaced_pod.yaml");
+    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await;
+    assert!(
+        pod_api_path.is_err(),
+        "resources with explicit namespace should yield error"
+    );
+
+    assert_eq!(
+        pod_api_path
+            .err()
+            .unwrap()
+            .to_string()
+            .as_str(),
+        "setting namespace forbidden: resource v1/Pod with name 'foo' has namespace set explicitly to 'foo-namespace'"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_not_create_namespace_if_a_resource_has_problems() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<()> {
+    let client = common::before_each().await?;
+
+    let name = common::random_name("apply-manifest");
+    common::install_project(&client, &name).await?;
+
+    // Create a pod from YAML
+    let pod_manifest = include_str!("pod.yaml");
+    let pod_api_path = helper::resource_path(&client, pod_manifest, name.as_str()).await?;
+
+    let request = Request::builder()
+        .uri(pod_api_path)
+        .method("POST")
+        .header("Content-Type", "application/yaml")
+        .body(pod_manifest.into())
+        .unwrap();
+
+    let result = client.request_text(request).await;
+    assert!(
+        &result.is_ok(),
+        "request to k8s api should work correctly: {}",
+        result.err().unwrap().to_string()
+    );
+
+    let pod_api: kube::Api<Pod> = kube::Api::namespaced(client.clone(), name.as_str());
+    let pod = pod_api.get("foo").await;
+    assert!(
+        &pod.is_ok(),
+        "pod should have been created successfully: {}",
+        pod.err().unwrap().to_string()
     );
 
     kube::Api::<project::Project>::all(client.clone())

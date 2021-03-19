@@ -39,6 +39,8 @@ version = "0.1.0"
 features = ["derive"]
 git = "https://github.com/deislabs/krustlet.git"
 branch = "master"
+# git = "https://github.com/kflansburg/krustlet"
+# rev = "315cb44fb37e35736fb9a06d3eeec9896d65e9a3"
 default-features = false
 
 [dev-dependencies]
