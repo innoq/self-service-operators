@@ -63,15 +63,15 @@ impl Project {
     }
 }
 
-impl Into<OwnerReference> for Project {
-    fn into(self) -> OwnerReference {
+impl From<&Project> for OwnerReference {
+    fn from(p: &Project) -> OwnerReference {
         OwnerReference {
-            api_version: self.api_version,
+            api_version: p.api_version.clone(),
             block_owner_deletion: None,
             controller: Some(true),
-            kind: self.kind,
-            name: self.metadata.name.unwrap(),
-            uid: self.metadata.uid.unwrap(),
+            kind: p.kind.clone(),
+            name: p.metadata.name.clone().unwrap(),
+            uid: p.metadata.uid.clone().unwrap(),
         }
     }
 }
@@ -219,7 +219,7 @@ impl State<ProjectState> for CreateNamespace {
         let namespace = Namespace {
             metadata: ObjectMeta {
                 name: Some(project.clone().metadata.name.unwrap()),
-                owner_references: Some(vec![project.into()]),
+                owner_references: Some(vec![OwnerReference::from(&project)]),
                 ..Default::default()
             },
             ..Default::default()
@@ -302,7 +302,7 @@ impl State<ProjectState> for SetupRBACPermissions {
         let rolebinding = RoleBinding {
             metadata: ObjectMeta {
                 name: Some(OWNER_ROLE_BINDING_NAME.to_string()),
-                owner_references: Some(vec![project.clone().into()]),
+                owner_references: Some(vec![OwnerReference::from(&project)]),
                 ..Default::default()
             },
             role_ref: RoleRef {
@@ -337,7 +337,7 @@ impl State<ProjectState> for SetupRBACPermissions {
             aggregation_rule: None,
             metadata: ObjectMeta {
                 name: Some(project.owner_cluster_role_name()),
-                owner_references: Some(vec![project.clone().into()]),
+                owner_references: Some(vec![OwnerReference::from(&project)]),
                 ..Default::default()
             },
             rules: Some(vec![PolicyRule {
@@ -372,7 +372,7 @@ impl State<ProjectState> for SetupRBACPermissions {
         let owner_cluster_role_binding = ClusterRoleBinding {
             metadata: ObjectMeta {
                 name: Some(project.owner_cluster_role_name()),
-                owner_references: Some(vec![project.clone().into()]),
+                owner_references: Some(vec![OwnerReference::from(&project)]),
                 ..Default::default()
             },
             role_ref: RoleRef {
@@ -435,17 +435,9 @@ impl State<ProjectState> for WaitForChanges {
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
         let ssp_api = kube::Api::<Project>::all(shared.read().await.client.clone());
-        let lp = &ListParams::default().fields(format!("metadata.name={}", state.name).as_str());
+        let lp = &ListParams::default().fields(&format!("metadata.name={}", state.name));
         let mut stream = ssp_api
-            .watch(
-                lp,
-                manifest
-                    .latest()
-                    .metadata
-                    .resource_version
-                    .unwrap()
-                    .as_str(),
-            )
+            .watch(lp, &(manifest.latest().metadata.resource_version.unwrap()))
             .await
             .unwrap()
             .boxed();
@@ -551,7 +543,7 @@ impl ProjectOperator {
         }));
 
         let _ = kube::Api::<ClusterRole>::all(client.clone())
-            .get(default_owner_cluster_role.as_str())
+            .get(&default_owner_cluster_role)
             .await
             .with_context(|| {
                 format!(

@@ -1,5 +1,4 @@
 use crate::common::WaitForState;
-use http::Request;
 use k8s_openapi::api::core::v1::{Namespace, Pod};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
 use kube::api::DeleteParams;
@@ -39,7 +38,7 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
 
     assert!(
         kube::Api::<project::Project>::all(client.clone())
-            .delete(name.as_str(), &DeleteParams::default())
+            .delete(&name, &DeleteParams::default())
             .await
             .is_ok(),
         "deleting project should work"
@@ -191,7 +190,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     );
 
     kube::Api::<project::Project>::all(client.clone())
-        .delete(name.as_str(), &DeleteParams::default())
+        .delete(&name, &DeleteParams::default())
         .await?;
 
     Ok(())
@@ -380,37 +379,29 @@ async fn it_should_not_create_namespace_if_a_resource_has_problems() -> anyhow::
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
 async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<()> {
     let client = common::before_each().await?;
 
     let name = common::random_name("apply-manifest");
-    common::install_project(&client, &name).await?;
+    let project = common::install_project(&client, &name).await?;
 
     // Create a pod from YAML
     let pod_manifest = include_str!("pod.yaml");
-    let pod_api_path = helper::resource_path(&client, pod_manifest, name.as_str()).await?;
 
-    let request = Request::builder()
-        .uri(pod_api_path)
-        .method("POST")
-        .header("Content-Type", "application/yaml")
-        .body(pod_manifest.into())
-        .unwrap();
-
-    let result = client.request_text(request).await;
-    assert!(
-        &result.is_ok(),
-        "request to k8s api should work correctly: {}",
-        result.err().unwrap().to_string()
-    );
+    helper::apply_yaml_manifest(&client, pod_manifest, &project).await?;
 
     let pod_api: kube::Api<Pod> = kube::Api::namespaced(client.clone(), name.as_str());
     let pod = pod_api.get("foo").await;
+
     assert!(
         &pod.is_ok(),
         "pod should have been created successfully: {}",
         pod.err().unwrap().to_string()
+    );
+
+    assert!(
+        common::is_owned_by_project(&project, &pod.unwrap()).is_ok(),
+        "pod should be owned by project"
     );
 
     kube::Api::<project::Project>::all(client.clone())
