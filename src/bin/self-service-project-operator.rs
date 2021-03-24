@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use std::process::exit;
+use std::{convert::TryFrom, process::exit};
 
 use clap::{crate_authors, crate_version, Clap};
 use env_logger::*;
@@ -9,6 +9,7 @@ use krator::OperatorRuntime;
 use log::LevelFilter;
 pub use schemars::JsonSchema;
 
+use anyhow::Context;
 use noqnoqnoq::self_service::helper;
 use noqnoqnoq::self_service::project;
 use noqnoqnoq::self_service::Sample;
@@ -78,12 +79,16 @@ async fn main() -> anyhow::Result<()> {
 
     let kubeconfig = kube::config::Config::infer().await?;
 
-    let client = kube::Client::new(kubeconfig.clone());
+    let client = kube::Client::try_from(kubeconfig.clone())
+        .context("error creating kubernetes client from the current environment")?;
+
     if opts.install_crd {
-        return helper::install_crd(&client, &project::Project::crd()).await;
+        return helper::install_crd(&client, &project::Project::crd())
+            .await
+            .and(Ok(()));
     }
 
-    let tracker = project::ProjectOperator::new(client, opts.default_owner_cluster_role).await?;
+    let tracker = project::ProjectOperator::new(client, &opts.default_owner_cluster_role).await?;
 
     // Only track mooses in Glacier NP
     // let params = ListParams::default().labels("nps.gov/park=glacier");

@@ -1,3 +1,4 @@
+use crate::project::Project;
 use anyhow::ensure;
 use anyhow::Context;
 use http::Request;
@@ -7,21 +8,22 @@ use kube;
 use kube::api;
 use serde::Deserialize;
 
-use crate::project::Project;
-use kube::api::Meta;
-
 pub async fn install_crd(
     client: &kube::Client,
     crd: &CustomResourceDefinition,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<CustomResourceDefinition> {
     let crds: kube::Api<CustomResourceDefinition> = kube::Api::all(client.clone());
     let pp = api::PostParams::default();
 
     match crds.create(&pp, &crd).await {
-        Ok(o) => {
-            info!("Created {} ({:?})", api::Meta::name(&o), o.status.unwrap());
-            debug!("Created CRD: {:?}", o.spec);
-            Ok(())
+        Ok(crd) => {
+            info!(
+                "Created {} ({:?})",
+                crd.metadata.name.as_ref().unwrap(),
+                crd.status.as_ref().unwrap()
+            );
+            debug!("Created CRD: {:?}", crd.spec);
+            Ok(crd)
         }
         Err(e) => {
             error!(
@@ -61,7 +63,12 @@ pub async fn apply_yaml_manifest(
     yaml_manifest: &str,
     project: &Project,
 ) -> anyhow::Result<()> {
-    let api_path = resource_path(&client, yaml_manifest, &project.name()).await?;
+    let api_path = resource_path(
+        &client,
+        yaml_manifest,
+        &project.metadata.name.as_ref().unwrap(),
+    )
+    .await?;
 
     let manifest_with_owner = add_owner_to_yaml_manifest(yaml_manifest, &project)?;
 

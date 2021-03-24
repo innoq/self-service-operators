@@ -1,21 +1,26 @@
+use anyhow::anyhow;
 use futures::{StreamExt, TryStreamExt};
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use anyhow::Context;
-use k8s_openapi::Metadata;
-use krator::{Manifest, ObjectState, ObjectStatus, Operator, State, Transition, TransitionTo};
-use kube::CustomResource;
+use krator::{
+    admission::AdmissionTls, Manifest, ObjectState, ObjectStatus, Operator, State, Transition,
+    TransitionTo,
+};
+use kube::{Api, CustomResource};
 // use kube::api::ListParams;
 use super::Sample;
 use crate::project::ProjectPhase::Initializing;
-use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::api::core::v1::{Namespace, Secret};
 use k8s_openapi::api::rbac::v1::{
     ClusterRole, ClusterRoleBinding, PolicyRule, RoleBinding, RoleRef, Subject,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use k8s_openapi::Resource;
+use krator::admission::AdmissionResult;
+use krator_derive::AdmissionWebhook;
 use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
+use kube::Resource;
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -24,7 +29,18 @@ use tokio::sync::RwLock;
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
-#[derive(CustomResource, Serialize, Deserialize, PartialEq, Default, Debug, Clone, JsonSchema)]
+#[derive(
+    AdmissionWebhook,
+    CustomResource,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Default,
+    Debug,
+    Clone,
+    JsonSchema,
+)]
+#[admission_webhook_features(secret, service, admission_webhook_config)]
 /// a self service project that will create a namespace per project with the owner having cluster-admin
 /// rights in this namespace
 #[kube(
@@ -128,6 +144,7 @@ impl ObjectStatus for ProjectStatus {
     fn json_patch(&self) -> serde_json::Value {
         debug!("json_patch called {:?}", self);
         // Generate a map containing only set fields.
+
         let mut status = serde_json::Map::new();
 
         if let Some(phase) = self.phase.clone() {
@@ -318,7 +335,6 @@ impl State<ProjectState> for SetupRBACPermissions {
             }]),
             ..Default::default()
         };
-
         {
             let api: kube::Api<RoleBinding> =
                 kube::Api::namespaced(shared.read().await.client.clone(), &state.name);
@@ -341,10 +357,10 @@ impl State<ProjectState> for SetupRBACPermissions {
                 ..Default::default()
             },
             rules: Some(vec![PolicyRule {
-                api_groups: Some(vec![Project::GROUP.to_string()]),
+                api_groups: Some(vec![Project::group(&()).to_string()]),
                 non_resource_urls: None,
                 resource_names: Some(vec![state.name.clone()]),
-                resources: Some(vec![Project::KIND.to_string()]),
+                resources: Some(vec![Project::kind(&()).to_string()]),
                 verbs: vec![
                     "get".to_string(),
                     "list".to_string(),
@@ -376,8 +392,8 @@ impl State<ProjectState> for SetupRBACPermissions {
                 ..Default::default()
             },
             role_ref: RoleRef {
-                api_group: ClusterRole::GROUP.to_string(),
-                kind: ClusterRole::KIND.to_string(),
+                api_group: ClusterRole::group(&()).to_string(),
+                kind: ClusterRole::kind(&()).to_string(),
                 name: project.owner_cluster_role_name(),
             },
             subjects: Some(vec![Subject {
@@ -442,27 +458,29 @@ impl State<ProjectState> for WaitForChanges {
             .unwrap()
             .boxed();
 
-        loop {
-            match stream.try_next().await {
-                Ok(Some(status)) => match status.clone() {
-                    WatchEvent::Modified(_resource) => {
-                        info!("project {} modified", state.name);
-                        break;
-                    }
-                    WatchEvent::Error(e) => {
-                        warn!("ERROR watching Project with name {}: {}", state.name, e.message);
-                    }
-                    _ => debug!(
-                        "unimplemented state while watching for changes on Project with name {}: {:?}",
-                        state.name,
-                        status
-                    ),
-                },
-                Err(e) => {
-                    state.error = e.to_string();
-                    return Transition::next(self, Error);
+        match stream.try_next().await {
+            Ok(Some(status)) => match status.clone() {
+                WatchEvent::Modified(_resource) => {
+                    info!("project {} modified", state.name);
+                    return Transition::next(self, CreateNamespace);
                 }
-                _ => {}
+                WatchEvent::Error(e) => {
+                    warn!(
+                        "ERROR watching Project with name {}: {}",
+                        state.name, e.message
+                    );
+                }
+                _ => debug!(
+                    "unimplemented state while watching for changes on Project with name {}: {:?}",
+                    state.name, status
+                ),
+            },
+            Err(e) => {
+                state.error = e.to_string();
+                return Transition::next(self, Error);
+            }
+            _ => {
+                print!("#");
             }
         }
 
@@ -535,11 +553,11 @@ pub struct ProjectOperator {
 impl ProjectOperator {
     pub async fn new(
         client: kube::Client,
-        default_owner_cluster_role: String,
+        default_owner_cluster_role: &str,
     ) -> anyhow::Result<Self> {
         let shared = Arc::new(RwLock::new(SharedState {
             client: client.clone(),
-            default_owner_cluster_role: default_owner_cluster_role.clone(),
+            default_owner_cluster_role: default_owner_cluster_role.to_string(),
         }));
 
         let _ = kube::Api::<ClusterRole>::all(client.clone())
@@ -568,7 +586,7 @@ impl Operator for ProjectOperator {
         &self,
         manifest: &Self::Manifest,
     ) -> anyhow::Result<Self::ObjectState> {
-        let name = manifest.metadata().name.clone().unwrap();
+        let name = manifest.meta().name.clone().unwrap();
         let spec = manifest.spec.clone();
         Ok(ProjectState {
             name,
@@ -587,5 +605,24 @@ impl Operator for ProjectOperator {
             serde_yaml::to_string(&manifest.latest()).unwrap()
         );
         Ok(())
+    }
+
+    async fn admission_hook(&self, manifest: Self::Manifest) -> AdmissionResult<Self::Manifest> {
+        AdmissionResult::Allow(manifest)
+    }
+
+    async fn admission_hook_tls(&self) -> anyhow::Result<AdmissionTls> {
+        // TOOD: make dynamic
+        let namespace = "default";
+        let client = self.shared.read().await.client.clone();
+
+        let secret_api = Api::<Secret>::namespaced(client, namespace);
+        // TODO: extract as method
+        let name = Project::admission_webhook_secret_name();
+
+        match secret_api.get(&name).await {
+            Ok(secret) => Ok(AdmissionTls::from(&secret).unwrap()),
+            Err(e) => Err(anyhow!(e)),
+        }
     }
 }

@@ -1,12 +1,18 @@
 use crate::common::WaitForState;
-use k8s_openapi::api::core::v1::{Namespace, Pod};
+use anyhow::bail;
+use config::{Config, Kubeconfig};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
-use kube::api::DeleteParams;
+use k8s_openapi::{
+    api::core::v1::{Namespace, Pod, Secret, ServiceAccount},
+    apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
+};
+use krator::admission;
 use kube::config;
-use noqnoqnoq::project;
+use kube::{api::DeleteParams, Api};
+use noqnoqnoq::project::{self, Project};
 use serial_test::serial;
-use std::path::Path;
 use std::time::Duration;
+use std::{convert::TryFrom, path::Path};
 use tokio::select;
 use tokio::time;
 
@@ -15,7 +21,7 @@ mod common;
 #[tokio::test]
 #[serial]
 async fn it_creates_namespace() -> anyhow::Result<()> {
-    let timeout_secs = 10;
+    let timeout_secs = 60;
     let client = common::before_each().await?;
 
     let name = common::random_name("namespace-test");
@@ -44,15 +50,15 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
         "deleting project should work"
     );
 
-    assert!(
-        select! {
-        res = futures::future::try_join(wait_for_project_deleted_handle,wait_for_namespace_deleted_handle) => res.is_ok(),
-            _ = time::sleep(Duration::from_secs(timeout_secs)) => false,
-        },
-        "deleting project {} deletes project and namespace within {} seconds",
-        name,
-        timeout_secs
-    );
+    select! {
+    res = futures::future::try_join(wait_for_project_deleted_handle,wait_for_namespace_deleted_handle) => {
+        match res {
+            Ok(_) => (),
+            Err(e) => bail!("error deleting namespace {}: {}", name, e)
+        }
+    },
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => bail!("deleting project {} deletes project and namespace within {} seconds", name, timeout_secs)
+    }
 
     Ok(())
 }
@@ -79,7 +85,7 @@ async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_
 async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project_cr(
 ) -> anyhow::Result<()> {
     let client = common::before_each().await?;
-    let timeout_secs = 6;
+    let timeout_secs = 60;
     let name = common::random_name("owner-cluster-role-test");
 
     let project = common::install_project(&client, &name).await?;
@@ -199,18 +205,12 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 #[tokio::test]
 #[serial]
 async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Result<()> {
-    let kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    let kubeconfig = Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
     let config =
-        config::Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
-            .await?;
+        Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default()).await?;
 
-    let client = kube::Client::new(config.clone());
-    match project::ProjectOperator::new(
-        client.clone(),
-        "non-existant-cluster-role-name".to_string(),
-    )
-    .await
-    {
+    let client = kube::Client::try_from(config.clone())?;
+    match project::ProjectOperator::new(client.clone(), "non-existant-cluster-role-name").await {
         Ok(_) => assert!(
             false,
             "project operator should fail if the given default owner cluster role does not exist"
@@ -385,6 +385,20 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     let name = common::random_name("apply-manifest");
     let project = common::install_project(&client, &name).await?;
 
+    let sa_api = kube::Api::<ServiceAccount>::namespaced(client.clone(), &name);
+    common::wait_for_state(&sa_api, &"default".to_string(), WaitForState::Created).await?;
+
+    let default_sa = sa_api.get("default").await?;
+    let default_secret_name = default_sa.secrets.as_ref().unwrap()[0]
+        .name
+        .as_ref()
+        .unwrap();
+
+    {
+        let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
+        common::wait_for_state(&api, &default_secret_name, WaitForState::Created).await?;
+    }
+
     // Create a pod from YAML
     let pod_manifest = include_str!("pod.yaml");
 
@@ -407,6 +421,71 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     kube::Api::<project::Project>::all(client.clone())
         .delete(name.as_str(), &DeleteParams::default())
         .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_boo() -> anyhow::Result<()> {
+    let mut kubeconfig = Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    // use hostname instead of ip: https://github.com/ctz/rustls/issues/206
+    kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
+        .cluster
+        .server
+        .replace("127.0.0.1", "localhost");
+    let mut config =
+        Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
+            .await
+            .unwrap();
+
+    config.timeout = Some(Duration::from_secs(10));
+
+    let client = kube::Client::try_from(config.clone())?;
+
+    let namespace = "default";
+    let webhook_resources =
+        admission::WebhookResources::from(Project::admission_webhook_resources(namespace));
+    println!("{}", webhook_resources); // print resources as yaml
+
+    // get the installed crd resource
+    let my_crd = Api::<CustomResourceDefinition>::all(client.clone())
+        .get(&Project::crd().metadata.name.unwrap())
+        .await?;
+
+    // install the necessary resources for serving a admission controller (service, secret, mutatingwebhookconfig)
+    // and make them owned by the crd ... this way, they will all be deleted once the crd gets deleted
+    webhook_resources
+        .apply_owned(&client.clone(), &my_crd)
+        .await?;
+
+    // let client = common::before_each().await?;
+
+    // let secret_api: kube::Api<Secret> = kube::Api::namespaced(client.clone(), "default");
+    // let s = secret_api
+    //     .get("projects-selfservice-innoq-io-admission-webhook-tls")
+    //     .await?;
+
+    // let tls = krator::admission::AdmissionTLS::from(&s).unwrap();
+
+    // dbg!(tls.cert);
+    // dbg!(tls.private_key);
+
+    // // let data = s.data.unwrap();
+    // // let cert = data.clone().get("tls.crt").unwrap();
+    // // let key = data.clone().get("tls.key").unwrap();
+    // // let zzz = std::str::from_utf8(&cert.0);
+    // // println!("{}\n{}", zzz.unwrap(), key.unwrap());
+
+    // // std::env::set_var("ADMISSION_CERT_PATH", "/tmp/foo.crt");
+    // // std::env::set_var("ADMISSION_KEY_PATH", "/tmp/priv.pem");
+    // let namespace = "default";
+    // println!(
+    //     "{}",
+    //     krator::admission::WebhookResources::from(project::Project::admission_webhook_resources(
+    //         namespace
+    //     ))
+    // );
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 KINDCONFIG=kind.kubeconfig
-CLUSTER_NAME=noqnoqnoq
+CLUSTER_NAME=test
 INGRESS_PORT_HTTP=80   # must not be used by somebody else
 INGRESS_PORT_HTTPS=443 # must not be used by somebody else
 
@@ -102,15 +102,7 @@ install_ingress_controller() {   # installs and sets up ingress controller
 setup_cluster_and_install_apps() {
   launch_kind_cluster
   install_ingress_controller
-  crd_and_example_deployment
   watch kubectl get pods -A
-}
-
-crd_and_example_deployment() {   # deletes & re-creates s5 crd and installs an example app
-  kubectl delete crd s5apps.s5.innoq.io
-  ./noqnoqnoq --print-crd|kubectl apply -f-
-  ./noqnoqnoq --print-example-app|kubectl apply -f-
-  kubectl get s5apps
 }
 
 if [ -z "$1" ] || ! echo $(_functions)|grep $1 >/dev/null

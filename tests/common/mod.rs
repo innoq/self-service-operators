@@ -1,26 +1,37 @@
 use futures::{StreamExt, TryStreamExt};
+use k8s::api::{admissionregistration::v1::MutatingWebhookConfiguration, core::v1::Service};
 use k8s_openapi as k8s;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use krator::OperatorRuntime;
-use kube::api;
+use kube::api::{self, DeleteParams};
 use kube::api::{PostParams, WatchEvent};
 use kube::config;
-use noqnoqnoq::self_service::{project, Sample};
-use std::path::Path;
+use noqnoqnoq::{
+    project::Project,
+    self_service::{project, Sample},
+};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{convert::TryFrom, path::Path};
 use tokio::select;
 use tokio::task::JoinHandle;
 use tokio::time;
 
 pub async fn before_each() -> anyhow::Result<kube::Client> {
-    let kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    let mut kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    // use hostname instead of ip: https://github.com/ctz/rustls/issues/206
+    kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
+        .cluster
+        .server
+        .replace("127.0.0.1", "localhost");
     let mut config =
         config::Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
             .await?;
-    config.timeout = Some(Duration::from_secs(1));
 
-    let client = kube::Client::new(config.clone());
+    config.timeout = Some(Duration::from_secs(10));
+
+    let client = kube::Client::try_from(config.clone())?;
 
     // basic check so we fail early if k8s communication does not work
     assert!(
@@ -33,7 +44,7 @@ pub async fn before_each() -> anyhow::Result<kube::Client> {
 
     let mut runtime = OperatorRuntime::new(
         &config,
-        project::ProjectOperator::new(client.clone(), "admin".to_string())
+        project::ProjectOperator::new(client.clone(), "admin")
             .await
             .unwrap(),
         None,
@@ -65,8 +76,32 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
     }
 
     let wait_for_crd_created = wait_for_state(&api, &name, WaitForState::Created);
-    noqnoqnoq::helper::install_crd(&client, &project::Project::crd()).await?;
+    let crd = noqnoqnoq::helper::install_crd(&client, &project::Project::crd()).await?;
     let _ = wait_for_crd_created.await?;
+
+    const NAMESPACE: &'static str = "default";
+    let (service, secret, config) = Project::admission_webhook_resources(NAMESPACE);
+
+    {
+        let api = kube::Api::<Service>::namespaced(client.clone(), NAMESPACE);
+        let service_name = service.metadata.name.as_ref().unwrap();
+        if api.get(service_name).await.is_ok() {
+            wait_for_state(&api, service_name, WaitForState::Deleted).await?;
+        }
+    }
+
+    krator::admission::WebhookResources(service, secret, config.clone())
+        .apply_owned(&client.clone(), &crd)
+        .await?;
+
+    // delete the webhook config again as we will not run within the cluster during testing
+    {
+        let api = kube::Api::<MutatingWebhookConfiguration>::all(client.clone());
+        let config_name = config.metadata.name.as_ref().unwrap();
+        let config_deletion = wait_for_state(&api, config_name, WaitForState::Deleted);
+        api.delete(config_name, &DeleteParams::default()).await?;
+        config_deletion.await?
+    }
 
     Ok(())
 }
@@ -77,12 +112,11 @@ pub fn wait_for_state<K: 'static>(
     state: WaitForState,
 ) -> JoinHandle<()>
 where
-    K: k8s::Resource
+    K: std::fmt::Debug
+        + kube::Resource
         + Clone
         + std::marker::Send
-        + kube::api::Meta
-        + for<'de> serde::de::Deserialize<'de>
-        + Sync,
+        + for<'de> serde::de::Deserialize<'de>,
 {
     let name = name.clone();
     let api = api.clone();
@@ -90,7 +124,7 @@ where
     tokio::spawn(async move {
         println!(
             "{} with name {} waiting for state {:?}",
-            K::KIND,
+            "FIXME", // TODO: fix: K::kind(&())
             name,
             state
         );
@@ -127,8 +161,8 @@ where
                 println!(
                     "  - {:?} for {} with name {} received",
                     e,
-                    k8s::kind(resource),
-                    resource.name()
+                    "FIXME", // TODO: fix: kube::Resource::kind(resource),
+                    (resource.meta().clone() as ObjectMeta).name.unwrap(),
                 );
             }
         };
@@ -155,20 +189,29 @@ where
                         }
                     }
                     WatchEvent::Error(e) => {
-                        println!(" - ERROR watching {} with name {}: {}", K::KIND, name, e);
+                        println!(
+                            " - ERROR watching {} with name {}: {}",
+                            "FIXME", // TODO: kube::Resource::kind(&api),
+                            name,
+                            e
+                        );
                     }
                 },
                 Ok(None) => {
                     // happens, if nothing watchable was found (e.g. watching for somehing in a namespace
                     // that does not exist yet
-                    println!("  - too early to watch {} with name {}", K::KIND, name,);
+                    println!(
+                        "  - too early to watch {} with name {}",
+                        "FIXME", // TODO: kube::Resource::kind(&api),
+                        name,
+                    );
                     tokio::time::sleep(time::Duration::from_millis(250)).await;
                     break;
                 }
                 Err(e) => {
                     println!(
                         " - ERROR getting {} with name {} from stream: {}",
-                        K::KIND,
+                        "FIXME", // TODO: kube::Resource::kind(&api),
                         name,
                         e
                     );
@@ -230,19 +273,19 @@ pub fn random_name(prefix: &str) -> String {
 
 pub fn is_owned_by_project<R>(project: &project::Project, resource: &R) -> anyhow::Result<()>
 where
-    R: k8s_openapi::Resource + kube::api::Meta,
+    R: kube::Resource,
 {
     assert!(
         resource.meta().owner_references.is_some(),
         "{} should have owner reference",
-        R::KIND
+        "FIXME", // TODO: kube::Resource::kind(resource)
     );
 
     let owners = resource.meta().owner_references.as_ref().unwrap();
     assert!(
         owners.len() > 0,
         "{} should have at least one owner",
-        R::KIND
+        "FIXME", // TODO: kube::Resource::kind(resource)
     );
 
     let owner = &owners[0];
