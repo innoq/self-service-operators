@@ -797,7 +797,7 @@ dependencies = [
  "futures",
  "json-patch",
  "k8s-openapi",
- "krator-derive 0.1.0 (git+https://github.com/deislabs/krustlet.git?branch=main)",
+ "krator-derive",
  "kube",
  "kube-runtime",
  "rcgen",
@@ -809,15 +809,6 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "warp",
-]
-
-[[package]]
-name = "krator-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -1041,7 +1032,7 @@ dependencies = [
  "http",
  "k8s-openapi",
  "krator",
- "krator-derive 0.1.0",
+ "krator-derive",
  "kube",
  "kube-derive",
  "kube-runtime",

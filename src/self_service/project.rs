@@ -538,6 +538,7 @@ pub struct EnvRepo {
 pub struct SharedState {
     client: kube::Client,
     default_owner_cluster_role: String,
+    default_ns: String,
 }
 
 impl SharedState {
@@ -554,10 +555,12 @@ impl ProjectOperator {
     pub async fn new(
         client: kube::Client,
         default_owner_cluster_role: &str,
+        default_ns: &str,
     ) -> anyhow::Result<Self> {
         let shared = Arc::new(RwLock::new(SharedState {
             client: client.clone(),
             default_owner_cluster_role: default_owner_cluster_role.to_string(),
+            default_ns: default_ns.to_string(),
         }));
 
         let _ = kube::Api::<ClusterRole>::all(client.clone())
@@ -613,8 +616,8 @@ impl Operator for ProjectOperator {
 
     async fn admission_hook_tls(&self) -> anyhow::Result<AdmissionTls> {
         // TOOD: make dynamic
-        let namespace = "default";
         let client = self.shared.read().await.client.clone();
+        let namespace = &self.shared.read().await.default_ns;
 
         let secret_api = Api::<Secret>::namespaced(client, namespace);
         // TODO: extract as method

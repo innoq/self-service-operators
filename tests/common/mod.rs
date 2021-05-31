@@ -44,7 +44,7 @@ pub async fn before_each() -> anyhow::Result<kube::Client> {
 
     let mut runtime = OperatorRuntime::new(
         &config,
-        project::ProjectOperator::new(client.clone(), "admin")
+        project::ProjectOperator::new(client.clone(), "admin", "default")
             .await
             .unwrap(),
         None,

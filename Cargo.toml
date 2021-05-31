@@ -36,8 +36,10 @@ tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "time"] }
 rcgen = "0.8.9"
 
 [dependencies.krator-derive]
-path = "../krustlet/crates/krator-derive"
+# path = "../krustlet/crates/krator-derive"
 features = ["admission-webhook"]
+git = "https://github.com/deislabs/krustlet.git"
+branch = "main"
 
 [dependencies.krator] # A Kubernetes operator implementation in Rust
 version = "0.2.0"

@@ -210,7 +210,9 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
         Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default()).await?;
 
     let client = kube::Client::try_from(config.clone())?;
-    match project::ProjectOperator::new(client.clone(), "non-existant-cluster-role-name").await {
+    match project::ProjectOperator::new(client.clone(), "non-existant-cluster-role-name", "default")
+        .await
+    {
         Ok(_) => assert!(
             false,
             "project operator should fail if the given default owner cluster role does not exist"

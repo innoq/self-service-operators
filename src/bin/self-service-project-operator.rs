@@ -88,7 +88,12 @@ async fn main() -> anyhow::Result<()> {
             .and(Ok(()));
     }
 
-    let tracker = project::ProjectOperator::new(client, &opts.default_owner_cluster_role).await?;
+    let tracker = project::ProjectOperator::new(
+        client,
+        &opts.default_owner_cluster_role,
+        &kubeconfig.default_ns,
+    )
+    .await?;
 
     // Only track mooses in Glacier NP
     // let params = ListParams::default().labels("nps.gov/park=glacier");
