@@ -9,7 +9,7 @@ use kube::api::{self, DeleteParams};
 use kube::api::{PostParams, WatchEvent};
 use kube::config;
 use noqnoqnoq::{
-    project::Project,
+    project::{Project, ProjectOperator},
     self_service::{project, Sample},
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -18,7 +18,7 @@ use tokio::select;
 use tokio::task::JoinHandle;
 use tokio::time;
 
-pub async fn before_each() -> anyhow::Result<kube::Client> {
+pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let mut kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
     // use hostname instead of ip: https://github.com/ctz/rustls/issues/206
     kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
@@ -42,17 +42,14 @@ pub async fn before_each() -> anyhow::Result<kube::Client> {
     // there is probably a better way FnOnce?
     let _ = reinstall_self_service_crd(&client).await?;
 
-    let mut runtime = OperatorRuntime::new(
-        &config,
-        project::ProjectOperator::new(client.clone(), "admin", "default")
-            .await
-            .unwrap(),
-        None,
-    );
+    let operator = project::ProjectOperator::new(client.clone(), "admin", "default")
+        .await
+        .unwrap();
+    let mut runtime = OperatorRuntime::new(&config, operator.clone(), None);
 
     tokio::spawn(async move { runtime.start().await });
 
-    Ok(client)
+    Ok((client, operator))
 }
 
 #[derive(Debug)]

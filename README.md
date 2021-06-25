@@ -10,6 +10,10 @@ With this operator, you can enable users to create a namespace which they can ad
 
 The _only_ necessary RBAC-permissions users need is the right to create resources of type [project.selfservice.innoq.io](self-service-project-manifest.yaml). If a project-manifest gets applied, operator will create a namespace which gets pre-filled with Kubernetes resources (probably mainly service accounts RBAC roles & rolebindings) as configured. Additionally it'll craete a rolebinding to a configurable ClusterRole granting the owner of the project special permisssions _within this namespace_ (e.g. `admin`).
 
+![operator flow](self-service-project-operator.svg)
+
+![]()
+
 ### Example scenario
 
 We have a company test Kubernetes-Cluster where employees should be able to deploy apps in dedicated namespaces without the need to create a support ticket. Furthermore they should not have cluster-wide access to resources.

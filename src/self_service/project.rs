@@ -16,7 +16,8 @@ use k8s_openapi::api::core::v1::{Namespace, Secret};
 use k8s_openapi::api::rbac::v1::{
     ClusterRole, ClusterRoleBinding, PolicyRule, RoleBinding, RoleRef, Subject,
 };
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Status;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ListMeta, OwnerReference};
 use krator::admission::AdmissionResult;
 use krator_derive::AdmissionWebhook;
 use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
@@ -547,6 +548,7 @@ impl SharedState {
     }
 }
 
+#[derive(Clone)]
 pub struct ProjectOperator {
     shared: Arc<RwLock<SharedState>>,
 }
@@ -610,8 +612,20 @@ impl Operator for ProjectOperator {
         Ok(())
     }
 
-    async fn admission_hook(&self, manifest: Self::Manifest) -> AdmissionResult<Self::Manifest> {
-        AdmissionResult::Allow(manifest)
+    async fn admission_hook(&self, project: Self::Manifest) -> AdmissionResult<Self::Manifest> {
+        AdmissionResult::Deny(Status {
+            code: Some(409),
+            details: None,
+            message: Some(format!(
+                "can't create project: a namespace with name '{}' already exists",
+                project.metadata.name.expect("")
+            )),
+            metadata: ListMeta {
+                ..Default::default()
+            },
+            reason: None,
+            status: Some("Failure".to_string()),
+        })
     }
 
     async fn admission_hook_tls(&self) -> anyhow::Result<AdmissionTls> {

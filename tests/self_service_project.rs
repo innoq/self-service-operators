@@ -6,10 +6,16 @@ use k8s_openapi::{
     api::core::v1::{Namespace, Pod, Secret, ServiceAccount},
     apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
 };
-use krator::admission;
+use krator::{
+    admission::{self, AdmissionResult},
+    Operator,
+};
+
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ListMeta;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Status;
 use kube::config;
 use kube::{api::DeleteParams, Api};
-use noqnoqnoq::project::{self, Project};
+use noqnoqnoq::project::{self, Project, ProjectOperator};
 use serial_test::serial;
 use std::time::Duration;
 use std::{convert::TryFrom, path::Path};
@@ -22,7 +28,7 @@ mod common;
 #[serial]
 async fn it_creates_namespace() -> anyhow::Result<()> {
     let timeout_secs = 60;
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
 
     let name = common::random_name("namespace-test");
     let project = common::install_project(&client, &name).await?;
@@ -73,10 +79,32 @@ async fn it_should_not_fail_if_namespace_was_already_created_by_project() -> any
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
 async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_operator(
 ) -> anyhow::Result<()> {
-    // later: we can't check the status atm
+    let (_, operator) = common::before_each().await?;
+
+    let project = Project::new("default", Default::default());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(
+                status.message,
+                Some(
+                    "can't create project: a namespace with name 'default' already exists"
+                        .to_string()
+                )
+            );
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => assert!(
+            false,
+            "admission hook did not fail if a new project's name clashes with an existing namespace"
+        ),
+    }
+
     Ok(())
 }
 
@@ -84,7 +112,7 @@ async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_
 #[serial]
 async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project_cr(
 ) -> anyhow::Result<()> {
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
     let timeout_secs = 60;
     let name = common::random_name("owner-cluster-role-test");
 
@@ -229,7 +257,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
 #[tokio::test]
 #[serial]
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
     let timeout_secs = 6;
     let name = common::random_name("rolebinding-test");
 
@@ -301,7 +329,7 @@ use noqnoqnoq::self_service::helper;
 #[tokio::test]
 #[serial]
 async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<()> {
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
     // Create a pod from JSON
     let pod_manifest = include_str!("pod.yaml");
     let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await?;
@@ -327,7 +355,7 @@ async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<(
 #[tokio::test]
 #[serial]
 async fn it_rejects_cluster_wide_manifests() -> anyhow::Result<()> {
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
     let self_service_project_manifest = include_str!("../self-service-project-manifest.yaml");
     let self_service_project_path =
         helper::resource_path(&client, self_service_project_manifest, "xxx").await;
@@ -351,7 +379,7 @@ async fn it_rejects_cluster_wide_manifests() -> anyhow::Result<()> {
 #[tokio::test]
 #[serial]
 async fn it_rejects_manifests_with_a_set_namespace() -> anyhow::Result<()> {
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
     // Create a pod from JSON
     let pod_manifest = include_str!("namespaced_pod.yaml");
     let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await;
@@ -382,7 +410,7 @@ async fn it_should_not_create_namespace_if_a_resource_has_problems() -> anyhow::
 #[tokio::test]
 #[serial]
 async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<()> {
-    let client = common::before_each().await?;
+    let (client, _) = common::before_each().await?;
 
     let name = common::random_name("apply-manifest");
     let project = common::install_project(&client, &name).await?;
