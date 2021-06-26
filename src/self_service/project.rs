@@ -65,6 +65,14 @@ pub struct ProjectSpec {
     pub private: Option<bool>,
 }
 
+// TODO: this is just for nicer test output ...
+impl k8s_openapi::Resource for Project {
+    const GROUP: &'static str = "selfservice.innoq.io";
+    const API_VERSION: &'static str = "selfservice.innoq.io/v1";
+    const KIND: &'static str = "Project";
+    const VERSION: &'static str = "v1";
+}
+
 impl Sample for ProjectSpec {
     fn sample() -> Self {
         ProjectSpec {

@@ -11,11 +11,9 @@ use krator::{
     Operator,
 };
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ListMeta;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Status;
 use kube::config;
 use kube::{api::DeleteParams, Api};
-use noqnoqnoq::project::{self, Project, ProjectOperator};
+use noqnoqnoq::project::{self, Project};
 use serial_test::serial;
 use std::time::Duration;
 use std::{convert::TryFrom, path::Path};

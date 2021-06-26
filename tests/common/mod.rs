@@ -110,6 +110,7 @@ pub fn wait_for_state<K: 'static>(
 ) -> JoinHandle<()>
 where
     K: std::fmt::Debug
+        + k8s_openapi::Resource
         + kube::Resource
         + Clone
         + std::marker::Send
@@ -121,7 +122,7 @@ where
     tokio::spawn(async move {
         println!(
             "{} with name {} waiting for state {:?}",
-            "FIXME", // TODO: fix: K::kind(&())
+            K::KIND,
             name,
             state
         );
@@ -158,7 +159,7 @@ where
                 println!(
                     "  - {:?} for {} with name {} received",
                     e,
-                    "FIXME", // TODO: fix: kube::Resource::kind(resource),
+                    K::KIND,
                     (resource.meta().clone() as ObjectMeta).name.unwrap(),
                 );
             }
@@ -186,29 +187,20 @@ where
                         }
                     }
                     WatchEvent::Error(e) => {
-                        println!(
-                            " - ERROR watching {} with name {}: {}",
-                            "FIXME", // TODO: kube::Resource::kind(&api),
-                            name,
-                            e
-                        );
+                        println!(" - ERROR watching {} with name {}: {}", K::KIND, name, e);
                     }
                 },
                 Ok(None) => {
                     // happens, if nothing watchable was found (e.g. watching for somehing in a namespace
                     // that does not exist yet
-                    println!(
-                        "  - too early to watch {} with name {}",
-                        "FIXME", // TODO: kube::Resource::kind(&api),
-                        name,
-                    );
+                    println!("  - too early to watch {} with name {}", K::KIND, name,);
                     tokio::time::sleep(time::Duration::from_millis(250)).await;
                     break;
                 }
                 Err(e) => {
                     println!(
                         " - ERROR getting {} with name {} from stream: {}",
-                        "FIXME", // TODO: kube::Resource::kind(&api),
+                        K::KIND,
                         name,
                         e
                     );
@@ -270,19 +262,19 @@ pub fn random_name(prefix: &str) -> String {
 
 pub fn is_owned_by_project<R>(project: &project::Project, resource: &R) -> anyhow::Result<()>
 where
-    R: kube::Resource,
+    R: kube::Resource + k8s_openapi::Resource,
 {
     assert!(
         resource.meta().owner_references.is_some(),
         "{} should have owner reference",
-        "FIXME", // TODO: kube::Resource::kind(resource)
+        R::KIND
     );
 
     let owners = resource.meta().owner_references.as_ref().unwrap();
     assert!(
         owners.len() > 0,
         "{} should have at least one owner",
-        "FIXME", // TODO: kube::Resource::kind(resource)
+        R::KIND
     );
 
     let owner = &owners[0];
