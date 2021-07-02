@@ -8,7 +8,7 @@ use krator::{
     admission::AdmissionTls, Manifest, ObjectState, ObjectStatus, Operator, State, Transition,
     TransitionTo,
 };
-use kube::{Api, CustomResource};
+use kube::{Api, CustomResource, Resource};
 // use kube::api::ListParams;
 use super::Sample;
 use crate::project::ProjectPhase::Initializing;
@@ -21,7 +21,6 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ListMeta, OwnerReference};
 use krator::admission::AdmissionResult;
 use krator_derive::AdmissionWebhook;
 use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
-use kube::Resource;
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -84,7 +83,10 @@ impl Sample for ProjectSpec {
 
 impl Project {
     pub fn owner_cluster_role_name(&self) -> String {
-        format!("{}-project-owner", self.metadata.name.as_ref().unwrap())
+        format!(
+            "selfservice:project:owner:{}",
+            self.metadata.name.as_ref().unwrap()
+        )
     }
 }
 
@@ -342,7 +344,6 @@ impl State<ProjectState> for SetupRBACPermissions {
                 name: project.clone().spec.owner,
                 namespace: None,
             }]),
-            ..Default::default()
         };
         {
             let api: kube::Api<RoleBinding> =
@@ -459,9 +460,8 @@ impl State<ProjectState> for WaitForChanges {
         state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
-        let ssp_api = kube::Api::<Project>::all(shared.read().await.client.clone());
         let lp = &ListParams::default().fields(&format!("metadata.name={}", state.name));
-        let mut stream = ssp_api
+        let mut stream = kube::Api::<Project>::all(shared.read().await.client.clone())
             .watch(lp, &(manifest.latest().metadata.resource_version.unwrap()))
             .await
             .unwrap()
@@ -621,19 +621,46 @@ impl Operator for ProjectOperator {
     }
 
     async fn admission_hook(&self, project: Self::Manifest) -> AdmissionResult<Self::Manifest> {
-        AdmissionResult::Deny(Status {
-            code: Some(409),
-            details: None,
-            message: Some(format!(
-                "can't create project: a namespace with name '{}' already exists",
-                project.metadata.name.expect("")
-            )),
-            metadata: ListMeta {
-                ..Default::default()
-            },
-            reason: None,
-            status: Some("Failure".to_string()),
-        })
+        let client = self.shared.read().await.client.clone();
+        let project_name = project.metadata.name.as_ref().expect("");
+
+        let deny = |msg: String| {
+            AdmissionResult::Deny(Status {
+                code: Some(409),
+                details: None,
+                message: Some(msg),
+                metadata: ListMeta {
+                    ..Default::default()
+                },
+
+                reason: None,
+                status: Some("Failure".to_string()),
+            })
+        };
+
+        if let Ok(project_namespace) = Api::<Namespace>::all(client).get(&project_name).await {
+            if let Some(owner_references) = project_namespace.metadata.owner_references {
+                let ns_owned_by_this_project =
+                    owner_references.into_iter().any(|owner_reference| {
+                        owner_reference.kind == Project::kind(&())
+                            && owner_reference.name == *project_name
+                    });
+
+                if !ns_owned_by_this_project {
+                    return deny(format!(
+                        "can't create/update project: a namespace with name '{}' already exists but is not owned by this project",
+                        project_name
+                    ));
+                }
+            } else {
+                return deny(format!(
+                    "can't create project: a namespace with name '{}' already exists",
+                    project_name
+                ));
+            }
+        }
+
+        AdmissionResult::Allow(project)
     }
 
     async fn admission_hook_tls(&self) -> anyhow::Result<AdmissionTls> {
@@ -641,13 +668,22 @@ impl Operator for ProjectOperator {
         let client = self.shared.read().await.client.clone();
         let namespace = &self.shared.read().await.default_ns;
 
-        let secret_api = Api::<Secret>::namespaced(client, namespace);
         // TODO: extract as method
         let name = Project::admission_webhook_secret_name();
 
-        match secret_api.get(&name).await {
+        match Api::<Secret>::namespaced(client, namespace)
+            .get(&name)
+            .await
+        {
             Ok(secret) => Ok(AdmissionTls::from(&secret).unwrap()),
             Err(e) => Err(anyhow!(e)),
         }
+    }
+
+    async fn deregistration_hook(
+        &self,
+        mut _manifest: Manifest<Self::Manifest>,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 }

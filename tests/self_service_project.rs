@@ -1,18 +1,12 @@
 use crate::common::WaitForState;
 use anyhow::bail;
 use config::{Config, Kubeconfig};
+use k8s_openapi::api::core::v1::{Namespace, Pod, Secret, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
-use k8s_openapi::{
-    api::core::v1::{Namespace, Pod, Secret, ServiceAccount},
-    apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
-};
-use krator::{
-    admission::{self, AdmissionResult},
-    Operator,
-};
+use krator::{admission::AdmissionResult, Operator};
 
-use kube::config;
-use kube::{api::DeleteParams, Api};
+use kube::api::DeleteParams;
+use kube::{config, Resource};
 use noqnoqnoq::project::{self, Project};
 use serial_test::serial;
 use std::time::Duration;
@@ -24,7 +18,7 @@ mod common;
 
 #[tokio::test]
 #[serial]
-async fn it_creates_namespace() -> anyhow::Result<()> {
+async fn it_creates_and_deletes_namespace() -> anyhow::Result<()> {
     let timeout_secs = 60;
     let (client, _) = common::before_each().await?;
 
@@ -32,10 +26,12 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
     let project = common::install_project(&client, &name).await?;
 
     let ns_api: kube::Api<Namespace> = kube::Api::all(client.clone());
+    let project_namespace = ns_api.get(&name).await?;
 
-    let new_namespace = ns_api.get(&name).await?;
-
-    let _ = common::is_owned_by_project(&project, &new_namespace);
+    assert!(
+        common::assert_is_owned_by_project(&project, &project_namespace).is_ok(),
+        "namespace should be owned by project"
+    );
 
     let wait_for_project_deleted_handle = common::wait_for_state(
         &kube::Api::<project::Project>::all(client.clone()),
@@ -69,9 +65,20 @@ async fn it_creates_namespace() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_not_fail_if_namespace_was_already_created_by_project() -> anyhow::Result<()> {
-    // later: we can't check the status atm
+async fn it_should_be_possible_to_update_projects() -> anyhow::Result<()> {
+    let (client, operator) = common::before_each().await?;
+
+    let name = common::random_name("update-project-test");
+    let _ = common::install_project(&client, &name).await?;
+
+    let project = Project::new(&name, Default::default());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Allow(_) => {}
+        _ => panic!("admission hook should pass when a project gets updated"),
+    }
     Ok(())
 }
 
@@ -97,8 +104,7 @@ async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_
             );
             assert_eq!(status.status, Some("Failure".to_string()));
         }
-        _ => assert!(
-            false,
+        _ => panic!(
             "admission hook did not fail if a new project's name clashes with an existing namespace"
         ),
     }
@@ -108,7 +114,7 @@ async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_
 
 #[tokio::test]
 #[serial]
-async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project_cr(
+async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project(
 ) -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
     let timeout_secs = 60;
@@ -151,25 +157,25 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 
     let cr = cr_api.get(&project.owner_cluster_role_name()).await?;
     assert!(
-        common::is_owned_by_project(&project, &cr).is_ok(),
+        common::assert_is_owned_by_project(&project, &cr).is_ok(),
         "owner cluster role should be owned by project"
     );
 
     assert!(cr.rules.is_some(), "cluster role should have rules");
     let rule = &cr.rules.unwrap()[0];
-    // assert_eq!(
-    //     rule.api_groups,
-    //     Some(vec![project.group]),
-    //     "owner cluster role should have correct api group set"
-    // );
+    assert_eq!(
+        rule.api_groups,
+        Some(vec![Project::group(&()).to_string()]),
+        "owner cluster role should have correct api group set"
+    );
     assert_eq!(
         rule.resource_names,
-        Some(vec![project.metadata.name.clone().unwrap()]),
+        Some(vec![project.metadata.name.as_ref().unwrap().to_owned()]),
         "owner cluster role should limit role to this specific project"
     );
     assert_eq!(
         rule.resources,
-        Some(vec![project.clone().kind]),
+        Some(vec![(&project.kind).to_owned()]),
         "owner cluster role should have correct resource set"
     );
     assert_eq!(
@@ -188,13 +194,12 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 
     let crb = crb_api.get(&project.owner_cluster_role_name()).await?;
     assert!(
-        common::is_owned_by_project(&project, &crb).is_ok(),
+        common::assert_is_owned_by_project(&project, &crb).is_ok(),
         "owner cluster role binding should be owned by project"
     );
 
     assert_eq!(
-        crb.role_ref.kind,
-        "ClusterRole".to_string(),
+        crb.role_ref.kind, "ClusterRole",
         "owner rolebinding role-ref kind should be ClusterRole"
     );
 
@@ -212,8 +217,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     let subject = &crb.subjects.unwrap()[0];
 
     assert_eq!(
-        subject.kind,
-        "User".to_string(),
+        subject.kind, "User",
         "cluster role binding subject kind should be correct"
     );
     assert_eq!(
@@ -239,8 +243,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
     match project::ProjectOperator::new(client.clone(), "non-existant-cluster-role-name", "default")
         .await
     {
-        Ok(_) => assert!(
-            false,
+        Ok(_) => panic!(
             "project operator should fail if the given default owner cluster role does not exist"
         ),
         Err(e) => assert_eq!(
@@ -261,9 +264,9 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
 
     let project = common::install_project(&client, &name).await?;
 
-    let rb_api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
+    let api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
     let wait_for_rolebinding_created_handle = common::wait_for_state(
-        &rb_api,
+        &api,
         &project::OWNER_ROLE_BINDING_NAME.to_string(),
         WaitForState::Created,
     );
@@ -277,10 +280,10 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
         timeout_secs
     );
 
-    let rb = rb_api.get(&project::OWNER_ROLE_BINDING_NAME).await?;
+    let rb = api.get(&project::OWNER_ROLE_BINDING_NAME).await?;
 
     assert!(
-        common::is_owned_by_project(&project, &rb).is_ok(),
+        common::assert_is_owned_by_project(&project, &rb).is_ok(),
         "owner role binding should be owned by project"
     );
 
@@ -290,7 +293,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
         "owner rolebinding name should be correct"
     );
     assert!(
-        rb.subjects.is_some() && rb.subjects.clone().unwrap().len() > 0,
+        rb.subjects.is_some() && !rb.subjects.as_ref().unwrap().is_empty(),
         "owner rolebinding subject should exit"
     );
 
@@ -432,8 +435,9 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
 
     helper::apply_yaml_manifest(&client, pod_manifest, &project).await?;
 
-    let pod_api: kube::Api<Pod> = kube::Api::namespaced(client.clone(), name.as_str());
-    let pod = pod_api.get("foo").await;
+    let pod = kube::Api::<Pod>::namespaced(client.clone(), name.as_str())
+        .get("foo")
+        .await;
 
     assert!(
         &pod.is_ok(),
@@ -442,78 +446,13 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     );
 
     assert!(
-        common::is_owned_by_project(&project, &pod.unwrap()).is_ok(),
+        common::assert_is_owned_by_project(&project, &pod.unwrap()).is_ok(),
         "pod should be owned by project"
     );
 
     kube::Api::<project::Project>::all(client.clone())
         .delete(name.as_str(), &DeleteParams::default())
         .await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_boo() -> anyhow::Result<()> {
-    let mut kubeconfig = Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
-    // use hostname instead of ip: https://github.com/ctz/rustls/issues/206
-    kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
-        .cluster
-        .server
-        .replace("127.0.0.1", "localhost");
-    let mut config =
-        Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
-            .await
-            .unwrap();
-
-    config.timeout = Some(Duration::from_secs(10));
-
-    let client = kube::Client::try_from(config.clone())?;
-
-    let namespace = "default";
-    let webhook_resources =
-        admission::WebhookResources::from(Project::admission_webhook_resources(namespace));
-    println!("{}", webhook_resources); // print resources as yaml
-
-    // get the installed crd resource
-    let my_crd = Api::<CustomResourceDefinition>::all(client.clone())
-        .get(&Project::crd().metadata.name.unwrap())
-        .await?;
-
-    // install the necessary resources for serving a admission controller (service, secret, mutatingwebhookconfig)
-    // and make them owned by the crd ... this way, they will all be deleted once the crd gets deleted
-    webhook_resources
-        .apply_owned(&client.clone(), &my_crd)
-        .await?;
-
-    // let client = common::before_each().await?;
-
-    // let secret_api: kube::Api<Secret> = kube::Api::namespaced(client.clone(), "default");
-    // let s = secret_api
-    //     .get("projects-selfservice-innoq-io-admission-webhook-tls")
-    //     .await?;
-
-    // let tls = krator::admission::AdmissionTLS::from(&s).unwrap();
-
-    // dbg!(tls.cert);
-    // dbg!(tls.private_key);
-
-    // // let data = s.data.unwrap();
-    // // let cert = data.clone().get("tls.crt").unwrap();
-    // // let key = data.clone().get("tls.key").unwrap();
-    // // let zzz = std::str::from_utf8(&cert.0);
-    // // println!("{}\n{}", zzz.unwrap(), key.unwrap());
-
-    // // std::env::set_var("ADMISSION_CERT_PATH", "/tmp/foo.crt");
-    // // std::env::set_var("ADMISSION_KEY_PATH", "/tmp/priv.pem");
-    // let namespace = "default";
-    // println!(
-    //     "{}",
-    //     krator::admission::WebhookResources::from(project::Project::admission_webhook_resources(
-    //         namespace
-    //     ))
-    // );
 
     Ok(())
 }

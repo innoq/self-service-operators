@@ -94,7 +94,7 @@ pub async fn resource_path(
 ) -> anyhow::Result<String> {
     let resource_info: ResourceInfo = serde_yaml::from_str(yaml_manifest)?;
 
-    let is_core_api_resource = !resource_info.api_version.contains("/");
+    let is_core_api_resource = !resource_info.api_version.contains('/');
 
     let available_resources = if is_core_api_resource {
         client

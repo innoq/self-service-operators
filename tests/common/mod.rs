@@ -62,21 +62,18 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
     let api: kube::Api<CustomResourceDefinition> = kube::Api::all(client.clone());
     let name = project::Project::crd().metadata.name.unwrap();
 
-    match api.get(&name).await {
-        Ok(_) => {
-            let wait_for_crd_deleted = wait_for_state(&api, &name, WaitForState::Deleted);
+    if api.get(&name).await.is_ok() {
+        let wait_for_crd_deleted = wait_for_state(&api, &name, WaitForState::Deleted);
 
-            api.delete(&name, &api::DeleteParams::default()).await?;
-            let _ = wait_for_crd_deleted.await?;
-        }
-        _ => {}
+        api.delete(&name, &api::DeleteParams::default()).await?;
+        let _ = wait_for_crd_deleted.await?;
     }
 
     let wait_for_crd_created = wait_for_state(&api, &name, WaitForState::Created);
     let crd = noqnoqnoq::helper::install_crd(&client, &project::Project::crd()).await?;
     let _ = wait_for_crd_created.await?;
 
-    const NAMESPACE: &'static str = "default";
+    const NAMESPACE: &str = "default";
     let (service, secret, config) = Project::admission_webhook_resources(NAMESPACE);
 
     {
@@ -105,7 +102,7 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
 
 pub fn wait_for_state<K: 'static>(
     api: &kube::Api<K>,
-    name: &String,
+    #[allow(clippy::ptr_arg)] name: &String,
     state: WaitForState,
 ) -> JoinHandle<()>
 where
@@ -147,8 +144,8 @@ where
         // check whether state is already reached before starting a watch
         let get_res = api.get(&name).await;
         match state {
-            WaitForState::Created if get_res.is_ok() => return (),
-            WaitForState::Deleted if get_res.is_err() => return (),
+            WaitForState::Created if get_res.is_ok() => return,
+            WaitForState::Deleted if get_res.is_err() => return,
             _ => {}
         }
 
@@ -214,7 +211,7 @@ where
 
 pub async fn install_project(
     client: &kube::Client,
-    name: &String,
+    #[allow(clippy::ptr_arg)] name: &String,
 ) -> anyhow::Result<project::Project> {
     let timeout_secs = 10;
     let project_api: kube::Api<project::Project> = kube::Api::all(client.clone());
@@ -260,7 +257,7 @@ pub fn random_name(prefix: &str) -> String {
     )
 }
 
-pub fn is_owned_by_project<R>(project: &project::Project, resource: &R) -> anyhow::Result<()>
+pub fn assert_is_owned_by_project<R>(project: &project::Project, resource: &R) -> anyhow::Result<()>
 where
     R: kube::Resource + k8s_openapi::Resource,
 {
@@ -272,7 +269,7 @@ where
 
     let owners = resource.meta().owner_references.as_ref().unwrap();
     assert!(
-        owners.len() > 0,
+        !owners.is_empty(),
         "{} should have at least one owner",
         R::KIND
     );
