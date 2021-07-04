@@ -27,6 +27,8 @@ use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
+pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
+pub const SECRET_ANNOTATION_VALUE: &str = "project.selfservice.innoq.io/operator-access";
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
 #[derive(

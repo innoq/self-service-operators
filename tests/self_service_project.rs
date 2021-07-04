@@ -5,10 +5,11 @@ use k8s_openapi::api::core::v1::{Namespace, Pod, Secret, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
 use krator::{admission::AdmissionResult, Operator};
 
-use kube::api::DeleteParams;
+use kube::api::{DeleteParams, ObjectMeta, PostParams};
 use kube::{config, Resource};
 use noqnoqnoq::project::{self, Project};
 use serial_test::serial;
+use std::collections::BTreeMap;
 use std::time::Duration;
 use std::{convert::TryFrom, path::Path};
 use tokio::select;
@@ -403,13 +404,6 @@ async fn it_rejects_manifests_with_a_set_namespace() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_not_create_namespace_if_a_resource_has_problems() -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
 async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
 
@@ -454,5 +448,112 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
         .delete(name.as_str(), &DeleteParams::default())
         .await?;
 
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
+    let (client, _) = common::before_each().await?;
+
+    let name = common::random_name("secret-annotations");
+    let _project = common::install_project(&client, &name).await?;
+
+    let mut data = BTreeMap::new();
+    data.insert(
+        "foo".into(),
+        k8s_openapi::ByteString("bar".as_bytes().to_owned()),
+    );
+
+    let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        project::SECRET_ANNOTATION_KEY.to_string(),
+        project::SECRET_ANNOTATION_VALUE.to_string(),
+    );
+
+    let _standard_secret = api
+        .create(
+            &PostParams::default(),
+            &Secret {
+                data: Some(data.clone()),
+                metadata: ObjectMeta {
+                    name: Some("standard-secret".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let _annotated_secret = api
+        .create(
+            &PostParams::default(),
+            &Secret {
+                data: Some(data),
+                metadata: ObjectMeta {
+                    annotations: Some(annotations),
+                    name: Some("annotated-secret".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let resources = helper::get_manifests_secret(&client, "i-do-not-exist", &name).await;
+    assert!(resources.is_err());
+    assert_eq!(resources.unwrap_err().to_string(), "ApiError: secrets \"i-do-not-exist\" not found: NotFound (ErrorResponse { status: \"Failure\", message: \"secrets \\\"i-do-not-exist\\\" not found\", reason: \"NotFound\", code: 404 })");
+
+    let resources = helper::get_manifests_secret(&client, "annotated-secret", &name).await;
+    assert!(resources.is_ok());
+
+    let resources = helper::get_manifests_secret(&client, "standard-secret", &name).await;
+    assert!(resources.is_err());
+    assert_eq!(
+        resources.unwrap_err().to_string(),
+        format!(
+            "Only secrets with the annotation '{}: {}' can be accessed by the project operator",
+            project::SECRET_ANNOTATION_KEY,
+            project::SECRET_ANNOTATION_VALUE
+        )
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_not_create_namespace_if_a_resource_has_problems() -> anyhow::Result<()> {
     Ok(())
 }

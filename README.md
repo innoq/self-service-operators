@@ -59,6 +59,8 @@ If the value of the annotation is `copy`, this manifest will be applied in the n
 
 If a manifest contains `{{owner}}`, the occurence will be replaced by the value of the `owner` of the project. Likewise, occurences with `{{project}}` will be replaced by the project's / namespace's name.
 
+Only namespaced resources are allowed -- cluster resources are forbidden.
+
 #### Example
 
 On namespace creation, add a role binding that grants all users of the group `employees` the cluster role `view` within this namespace. Furthermore create a service account `viewer` which gets bound to the same cluster role:

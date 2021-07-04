@@ -2,6 +2,7 @@ use crate::project::Project;
 use anyhow::ensure;
 use anyhow::Context;
 use http::Request;
+use k8s_openapi::api::core::v1::Secret;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
 use kube;
@@ -41,6 +42,31 @@ struct ResourceInfo {
     metadata: ObjectMeta,
     api_version: String,
     kind: String,
+}
+
+pub async fn get_manifests_secret(
+    client: &kube::Client,
+    secret_name: &str,
+    namespace: &str,
+) -> anyhow::Result<Secret> {
+    let secret_api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), &namespace);
+
+    let secret = secret_api.get(secret_name).await?;
+
+    let annotation = secret
+        .metadata
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.get(crate::project::SECRET_ANNOTATION_KEY));
+
+    ensure!(
+        annotation.is_some() && annotation.unwrap() == crate::project::SECRET_ANNOTATION_VALUE,
+        "Only secrets with the annotation '{}: {}' can be accessed by the project operator",
+        crate::project::SECRET_ANNOTATION_KEY,
+        crate::project::SECRET_ANNOTATION_VALUE
+    );
+
+    Ok(secret)
 }
 
 pub fn add_owner_to_yaml_manifest(
