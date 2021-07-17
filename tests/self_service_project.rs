@@ -1,17 +1,14 @@
 use crate::common::WaitForState;
 use anyhow::bail;
-use config::{Config, Kubeconfig};
-use k8s_openapi::api::core::v1::{Namespace, Pod, Secret, ServiceAccount};
+use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
 use krator::{admission::AdmissionResult, Operator};
 
-use kube::api::{DeleteParams, ObjectMeta, PostParams};
-use kube::{config, Resource};
+use kube::api::DeleteParams;
+use kube::Resource;
 use noqnoqnoq::project::{self, Project};
 use serial_test::serial;
-use std::collections::BTreeMap;
 use std::time::Duration;
-use std::{convert::TryFrom, path::Path};
 use tokio::select;
 use tokio::time;
 
@@ -267,34 +264,6 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
 
 #[tokio::test]
 #[serial]
-async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result<()> {
-    let kubeconfig = Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
-    let config =
-        Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default()).await?;
-
-    let client = kube::Client::try_from(config.clone())?;
-    match project::ProjectOperator::new(
-        client.clone(),
-        project::OWNER_ROLE_BINDING_NAME,
-        "default",
-        "non-existant-secret",
-    )
-    .await
-    {
-        Ok(_) => panic!(
-            "project operator should fail if the given default manifests secret does not exist"
-        ),
-        Err(e) => assert_eq!(
-            e.to_string(),
-            "no Secret with name 'non-existant-secret' in namespace 'default' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
-            "error message should be correct"
-        ),
-    };
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
     let timeout_secs = 6;
@@ -360,233 +329,6 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
         .delete(name.as_str(), &DeleteParams::default())
         .await?;
 
-    Ok(())
-}
-
-use noqnoqnoq::self_service::helper;
-
-#[tokio::test]
-#[serial]
-async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
-    // Create a pod from JSON
-    let pod_manifest = include_str!("pod.yaml");
-    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await?;
-    assert_eq!("/api/v1/namespaces/xxx/pods".to_string(), pod_api_path);
-
-    let deploy_manifest = include_str!("deployment.yaml");
-    let deploy_api_path = helper::resource_path(&client, deploy_manifest, "xxx").await?;
-    assert_eq!(
-        "/apis/apps/v1/namespaces/xxx/deployments".to_string(),
-        deploy_api_path
-    );
-
-    let role_manifest = include_str!("role.yaml");
-    let role_api_path = helper::resource_path(&client, role_manifest, "xxx").await?;
-    assert_eq!(
-        "/apis/rbac.authorization.k8s.io/v1/namespaces/xxx/roles".to_string(),
-        role_api_path
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_rejects_cluster_wide_manifests() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
-    let self_service_project_manifest = include_str!("../self-service-project-manifest.yaml");
-    let self_service_project_path =
-        helper::resource_path(&client, self_service_project_manifest, "xxx").await;
-    assert!(
-        self_service_project_path.is_err(),
-        "cluster non-namespaced resources should yield an error"
-    );
-
-    assert_eq!(
-        self_service_project_path
-            .err()
-            .unwrap()
-            .to_string()
-            .as_str(),
-        "only namespaced resources are supported: selfservice.innoq.io/v1/Project with name 'sample-self-service-project' is a cluster resource"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_rejects_manifests_with_a_set_namespace() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
-    // Create a pod from JSON
-    let pod_manifest = include_str!("namespaced_pod.yaml");
-    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await;
-    assert!(
-        pod_api_path.is_err(),
-        "resources with explicit namespace should yield error"
-    );
-
-    assert_eq!(
-        pod_api_path
-            .err()
-            .unwrap()
-            .to_string()
-            .as_str(),
-        "setting namespace forbidden: resource v1/Pod with name 'foo' has namespace set explicitly to 'foo-namespace'"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
-
-    let name = common::random_name("apply-manifest");
-    let project = common::install_project(&client, &name).await?;
-
-    let sa_api = kube::Api::<ServiceAccount>::namespaced(client.clone(), &name);
-    common::wait_for_state(&sa_api, &"default".to_string(), WaitForState::Created).await?;
-
-    let default_sa = sa_api.get("default").await?;
-    let default_secret_name = default_sa.secrets.as_ref().unwrap()[0]
-        .name
-        .as_ref()
-        .unwrap();
-
-    {
-        let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
-        common::wait_for_state(&api, &default_secret_name, WaitForState::Created).await?;
-    }
-
-    // Create a pod from YAML
-    let pod_manifest = include_str!("pod.yaml");
-
-    helper::apply_yaml_manifest(&client, pod_manifest, &project).await?;
-
-    let pod = kube::Api::<Pod>::namespaced(client.clone(), name.as_str())
-        .get("foo")
-        .await;
-
-    assert!(
-        &pod.is_ok(),
-        "pod should have been created successfully: {}",
-        pod.err().unwrap().to_string()
-    );
-
-    assert!(
-        common::assert_is_owned_by_project(&project, &pod.unwrap()).is_ok(),
-        "pod should be owned by project"
-    );
-
-    kube::Api::<project::Project>::all(client.clone())
-        .delete(name.as_str(), &DeleteParams::default())
-        .await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
-
-    let name = common::random_name("secret-annotations");
-    let _project = common::install_project(&client, &name).await?;
-
-    let mut data = BTreeMap::new();
-    data.insert(
-        "foo".into(),
-        k8s_openapi::ByteString("bar".as_bytes().to_owned()),
-    );
-
-    let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
-
-    let mut annotations = BTreeMap::new();
-    annotations.insert(
-        project::SECRET_ANNOTATION_KEY.to_string(),
-        project::SECRET_ANNOTATION_VALUE.to_string(),
-    );
-
-    let _standard_secret = api
-        .create(
-            &PostParams::default(),
-            &Secret {
-                data: Some(data.clone()),
-                metadata: ObjectMeta {
-                    name: Some("standard-secret".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        )
-        .await?;
-
-    let _annotated_secret = api
-        .create(
-            &PostParams::default(),
-            &Secret {
-                data: Some(data),
-                metadata: ObjectMeta {
-                    annotations: Some(annotations),
-                    name: Some("annotated-secret".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        )
-        .await?;
-
-    let resources = helper::get_manifests_secret(&client, "i-do-not-exist", &name).await;
-    assert!(resources.is_err());
-    assert_eq!(resources.unwrap_err().to_string(), "ApiError: secrets \"i-do-not-exist\" not found: NotFound (ErrorResponse { status: \"Failure\", message: \"secrets \\\"i-do-not-exist\\\" not found\", reason: \"NotFound\", code: 404 })");
-
-    let resources = helper::get_manifests_secret(&client, "annotated-secret", &name).await;
-    assert!(resources.is_ok());
-
-    let resources = helper::get_manifests_secret(&client, "standard-secret", &name).await;
-    assert!(resources.is_err());
-    assert_eq!(
-        resources.unwrap_err().to_string(),
-        format!(
-            "Error accessing secret 'standard-secret': only secrets with the annotation '{}: {}' can be accessed by the project operator",
-            project::SECRET_ANNOTATION_KEY,
-            project::SECRET_ANNOTATION_VALUE
-        )
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_fail_admission_if_secret_with_resource_manifests_is_not_available(
-) -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_fail_admission_if_secret_does_not_contain_addressed_data_item(
-) -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     Ok(())
 }
 
