@@ -1,17 +1,19 @@
 use futures::{StreamExt, TryStreamExt};
+use k8s::api::core::v1::Secret;
 use k8s::api::{admissionregistration::v1::MutatingWebhookConfiguration, core::v1::Service};
 use k8s_openapi as k8s;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use krator::OperatorRuntime;
-use kube::api::{self, DeleteParams};
+use kube::api::{self, DeleteParams, Patch, PatchParams};
 use kube::api::{PostParams, WatchEvent};
 use kube::config;
 use noqnoqnoq::{
     project::{Project, ProjectOperator},
     self_service::{project, Sample},
 };
+use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{convert::TryFrom, path::Path};
 use tokio::select;
@@ -19,32 +21,24 @@ use tokio::task::JoinHandle;
 use tokio::time;
 
 pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
-    let mut kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
-    // use hostname instead of ip: https://github.com/ctz/rustls/issues/206
-    kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
-        .cluster
-        .server
-        .replace("127.0.0.1", "localhost");
-    let mut config =
-        config::Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
-            .await?;
+    let (config, client) = get_client().await?;
 
-    config.timeout = Some(Duration::from_secs(10));
-
-    let client = kube::Client::try_from(config.clone())?;
-
-    // basic check so we fail early if k8s communication does not work
     assert!(
-        client.apiserver_version().await.is_ok(),
-        "communication with kubernetes should work"
+        install_default_manifest_secret(&client).await.is_ok(),
+        "installing default manifest secret should work"
     );
 
     // there is probably a better way FnOnce?
     let _ = reinstall_self_service_crd(&client).await?;
 
-    let operator = project::ProjectOperator::new(client.clone(), "admin", "default")
-        .await
-        .unwrap();
+    let operator = project::ProjectOperator::new(
+        client.clone(),
+        "admin",
+        "default",
+        project::DEFAULT_MANIFESTS_SECRET,
+    )
+    .await
+    .unwrap();
     let mut runtime = OperatorRuntime::new(&config, operator.clone(), None);
 
     tokio::spawn(async move { runtime.start().await });
@@ -52,10 +46,65 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     Ok((client, operator))
 }
 
+pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error> {
+    let mut kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
+        .cluster
+        .server
+        .replace("127.0.0.1", "localhost");
+    let mut config =
+        config::Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
+            .await?;
+    config.timeout = Some(Duration::from_secs(10));
+    let client = kube::Client::try_from(config.clone())?;
+    assert!(
+        client.apiserver_version().await.is_ok(),
+        "communication with kubernetes should work"
+    );
+    Ok((config, client))
+}
+
+pub async fn install_default_manifest_secret(
+    client: &kube::Client,
+) -> anyhow::Result<(), anyhow::Error> {
+    let wait_for_secret_created_handle = wait_for_state(
+        &kube::Api::<Secret>::all(client.clone()),
+        &project::DEFAULT_MANIFESTS_SECRET.to_string(),
+        WaitForState::Updated,
+    );
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        project::SECRET_ANNOTATION_KEY.to_string(),
+        project::SECRET_ANNOTATION_VALUE.to_string(),
+    );
+    kube::Api::<Secret>::namespaced(client.clone(), "default")
+        .patch(
+            project::DEFAULT_MANIFESTS_SECRET,
+            &PatchParams {
+                force: true,
+                field_manager: Some("operator-test".to_string()),
+                ..Default::default()
+            },
+            &Patch::Apply(&Secret {
+                data: Some(BTreeMap::new()),
+                metadata: ObjectMeta {
+                    name: Some(project::DEFAULT_MANIFESTS_SECRET.to_string()),
+                    annotations: Some(annotations),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        )
+        .await?;
+    let _ = wait_for_secret_created_handle.await;
+    Ok(())
+}
+
 #[derive(Debug)]
 pub enum WaitForState {
     Deleted,
     Created,
+    Updated,
 }
 
 pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result<()> {
@@ -170,12 +219,18 @@ where
                         if let WaitForState::Created = state {
                             break;
                         }
+                        if let WaitForState::Updated = state {
+                            break;
+                        }
                     }
                     WatchEvent::Bookmark(bookmark) => {
                         println!(" - {:?} for {}", status, bookmark.types.kind);
                     }
                     WatchEvent::Modified(resource) => {
                         print_info(&status, &resource);
+                        if let WaitForState::Updated = state {
+                            break;
+                        }
                     }
                     WatchEvent::Deleted(resource) => {
                         print_info(&status, &resource);

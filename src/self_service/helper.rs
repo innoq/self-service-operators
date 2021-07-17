@@ -61,7 +61,8 @@ pub async fn get_manifests_secret(
 
     ensure!(
         annotation.is_some() && annotation.unwrap() == crate::project::SECRET_ANNOTATION_VALUE,
-        "Only secrets with the annotation '{}: {}' can be accessed by the project operator",
+        "Error accessing secret '{}': only secrets with the annotation '{}: {}' can be accessed by the project operator",
+        secret_name,
         crate::project::SECRET_ANNOTATION_KEY,
         crate::project::SECRET_ANNOTATION_VALUE
     );

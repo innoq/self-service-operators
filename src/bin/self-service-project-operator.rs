@@ -92,6 +92,7 @@ async fn main() -> anyhow::Result<()> {
         client,
         &opts.default_owner_cluster_role,
         &kubeconfig.default_ns,
+        crate::project::DEFAULT_MANIFESTS_SECRET,
     )
     .await?;
 

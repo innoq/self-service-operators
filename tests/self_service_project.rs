@@ -236,13 +236,22 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 #[tokio::test]
 #[serial]
 async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Result<()> {
-    let kubeconfig = Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
-    let config =
-        Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default()).await?;
+    let (_, client) = common::get_client().await?;
 
-    let client = kube::Client::try_from(config.clone())?;
-    match project::ProjectOperator::new(client.clone(), "non-existant-cluster-role-name", "default")
-        .await
+    assert!(
+        common::install_default_manifest_secret(&client)
+            .await
+            .is_ok(),
+        "installing default manifest secret should work"
+    );
+
+    match project::ProjectOperator::new(
+        client.clone(),
+        "non-existant-cluster-role-name",
+        "default",
+        project::DEFAULT_MANIFESTS_SECRET,
+    )
+    .await
     {
         Ok(_) => panic!(
             "project operator should fail if the given default owner cluster role does not exist"
@@ -250,6 +259,34 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
         Err(e) => assert_eq!(
             e.to_string(),
             "no ClusterRole with name 'non-existant-cluster-role-name' found -- aborting",
+            "error message should be correct"
+        ),
+    };
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result<()> {
+    let kubeconfig = Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    let config =
+        Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default()).await?;
+
+    let client = kube::Client::try_from(config.clone())?;
+    match project::ProjectOperator::new(
+        client.clone(),
+        project::OWNER_ROLE_BINDING_NAME,
+        "default",
+        "non-existant-secret",
+    )
+    .await
+    {
+        Ok(_) => panic!(
+            "project operator should fail if the given default manifests secret does not exist"
+        ),
+        Err(e) => assert_eq!(
+            e.to_string(),
+            "no Secret with name 'non-existant-secret' in namespace 'default' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
             "error message should be correct"
         ),
     };
@@ -514,7 +551,7 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     assert_eq!(
         resources.unwrap_err().to_string(),
         format!(
-            "Only secrets with the annotation '{}: {}' can be accessed by the project operator",
+            "Error accessing secret 'standard-secret': only secrets with the annotation '{}: {}' can be accessed by the project operator",
             project::SECRET_ANNOTATION_KEY,
             project::SECRET_ANNOTATION_VALUE
         )
@@ -526,14 +563,16 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
 #[tokio::test]
 #[serial]
 #[ignore = "not yet implemented"]
-async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> anyhow::Result<()> {
+async fn it_should_fail_admission_if_secret_with_resource_manifests_is_not_available(
+) -> anyhow::Result<()> {
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
 #[ignore = "not yet implemented"]
-async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyhow::Result<()> {
+async fn it_should_fail_admission_if_secret_does_not_contain_addressed_data_item(
+) -> anyhow::Result<()> {
     Ok(())
 }
 

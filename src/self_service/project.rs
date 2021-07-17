@@ -28,7 +28,8 @@ use tokio::sync::RwLock;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
-pub const SECRET_ANNOTATION_VALUE: &str = "project.selfservice.innoq.io/operator-access";
+pub const SECRET_ANNOTATION_VALUE: &str = "grant";
+pub const DEFAULT_MANIFESTS_SECRET: &str = "default-project-manifests";
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
 #[derive(
@@ -548,8 +549,18 @@ pub struct EnvRepo {
 
 pub struct SharedState {
     client: kube::Client,
+    default_manifests_secret: String,
     default_owner_cluster_role: String,
     default_ns: String,
+}
+
+impl Default for SharedState {
+    fn default() -> Self {
+        SharedState {
+            default_manifests_secret: DEFAULT_MANIFESTS_SECRET.to_string(),
+            ..Default::default()
+        }
+    }
 }
 
 impl SharedState {
@@ -568,12 +579,21 @@ impl ProjectOperator {
         client: kube::Client,
         default_owner_cluster_role: &str,
         default_ns: &str,
+        default_manifests_secret: &str,
     ) -> anyhow::Result<Self> {
         let shared = Arc::new(RwLock::new(SharedState {
             client: client.clone(),
             default_owner_cluster_role: default_owner_cluster_role.to_string(),
             default_ns: default_ns.to_string(),
+            default_manifests_secret: default_manifests_secret.to_string(),
         }));
+
+        let _ = crate::helper::get_manifests_secret(&client, default_manifests_secret, default_ns).await.with_context(|| {
+                format!(
+                    "no Secret with name '{}' in namespace '{}' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
+                    default_manifests_secret, default_ns
+                )
+        })?;
 
         let _ = kube::Api::<ClusterRole>::all(client.clone())
             .get(&default_owner_cluster_role)
