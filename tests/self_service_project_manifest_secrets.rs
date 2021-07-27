@@ -98,7 +98,6 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     Ok(())
 }
 
-
 #[tokio::test]
 #[serial]
 #[ignore = "not yet implemented"]
@@ -110,5 +109,12 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
 #[serial]
 #[ignore = "not yet implemented"]
 async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "not yet implemented"]
+async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     Ok(())
 }

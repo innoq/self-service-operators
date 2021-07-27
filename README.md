@@ -52,14 +52,22 @@ project.selfservice.innoq.io/operator-access: grant
 in order to be accessible to the operator. Each secret can store multiple items in it's data fields. Each item is addressed in the form:
 
 ```yaml
-project.selfservice.innoq.io/<secret-name>.<data-item-name>: copy # allowed values are 'copy' or 'skip'
+ project.selfservice.innoq.io/<secret-name>.<data-item-name>: copy # allowed values are 'copy' or 'skip'
 ```
 
 If the value of the annotation is `copy`, this manifest will be applied in the new namespace. The operator can be configured with default manifests -- if a default manifest should be ommited, it's possible to explicitly set the value `skip` for this manifest.
 
-If a manifest contains `{{owner}}`, the occurence will be replaced by the value of the `owner` of the project. Likewise, occurences with `{{project}}` will be replaced by the project's / namespace's name.
+If _all_ data items of a secret should be applied or skipped, simply omit the `<data-item-name>` part:
+
+```yaml
+project.selfservice.innoq.io/<secret-name>: copy # copy all data items of the secret
+```
+
+If a manifest yaml source contains the string`{{owner}}`, the occurence will be replaced by the value of the `owner` of the project. Likewise, occurences with `{{project}}` will be replaced by the project's / namespace's name.
 
 Only namespaced resources are allowed -- cluster resources are forbidden.
+
+The operator will apply the manifests addressed in the default manifests secret, followed by the manifests referenced in the annotations in listed order. Likewise, data items will be applied in the order they are stored in the secrets.
 
 #### Example
 

@@ -2,7 +2,6 @@ use crate::common::WaitForState;
 use anyhow::bail;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
-use krator::{admission::AdmissionResult, Operator};
 
 use kube::api::DeleteParams;
 use kube::Resource;

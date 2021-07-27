@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use futures::{StreamExt, TryStreamExt};
+use kube::Client;
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
@@ -30,6 +31,10 @@ pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
 pub const SECRET_ANNOTATION_VALUE: &str = "grant";
 pub const DEFAULT_MANIFESTS_SECRET: &str = "default-project-manifests";
+
+pub const COPY_ANNOTATION_BASE: &str = "project.selfservice.innoq.io";
+pub const COPY_ANNOTATION_COPY_VALUE: &str = "copy";
+pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
 #[derive(
@@ -90,6 +95,130 @@ impl Project {
             "selfservice:project:owner:{}",
             self.metadata.name.as_ref().unwrap()
         )
+    }
+
+    // for each project a namespace is created and kubernetes resources are created within this
+    // namespace. Project manifest can influence which resources get created (or skipped) via annotations:
+    //
+    // project.selfservice.innoq.io/<secret-name>.<data-item-name>: copy
+    // project.selfservice.innoq.io/<secret-name>: copy (applies to all data items of that secret)
+    //
+    // project.selfservice.innoq.io/<secret-name>.<data-item-name>: skip
+    // project.selfservice.innoq.io/<secret-name>: skip (applies to all data items of that secret)
+    //
+    // there is an implicit
+    //
+    // project.selfservice.innoq.io/default-project-manifests: copy
+    //
+    // for all projects
+    pub async fn associated_manifests(
+        &self,
+        client: &Client,
+        namespace: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        #[derive(Clone)]
+        struct ManifestReference {
+            secret_name: String,
+            data_item: Option<String>,
+        }
+
+        let mut manifest_references = vec![ManifestReference {
+            secret_name: DEFAULT_MANIFESTS_SECRET.to_string(),
+            data_item: None,
+        }];
+
+        let mut skip_manifest_references = None;
+
+        if let Some(annotations) = &self.metadata.annotations {
+            let mut copy_manifests = annotations
+                .iter()
+                .filter(|(key, value)| {
+                    key.starts_with(COPY_ANNOTATION_BASE) && *value == COPY_ANNOTATION_COPY_VALUE
+                })
+                .map(|(ref key, _)| {
+                    let secret_and_item = key
+                        .to_string()
+                        .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
+                    let secret_and_item = secret_and_item.split('.').collect::<Vec<_>>();
+
+                    ManifestReference {
+                        secret_name: secret_and_item[0].to_string(),
+                        data_item: secret_and_item.get(1).map(|x| x.to_string()),
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            manifest_references.append(&mut copy_manifests);
+
+            let skip_manifests = annotations
+                .iter()
+                .filter(|(key, value)| {
+                    key.starts_with(COPY_ANNOTATION_BASE) && *value == COPY_ANNOTATION_SKIP_VALUE
+                })
+                .map(|(ref key, _)| {
+                    let secret_and_item = key
+                        .to_string()
+                        .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
+                    let secret_and_item = secret_and_item.split('.').collect::<Vec<_>>();
+
+                    ManifestReference {
+                        secret_name: secret_and_item[0].to_string(),
+                        data_item: secret_and_item.get(1).map(|x| x.to_string()),
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            if !skip_manifests.is_empty() {
+                skip_manifest_references = Some(skip_manifests);
+            }
+        }
+
+        let api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), namespace);
+
+        let mut manifest_yaml_sources = vec![];
+        for reference in manifest_references.iter() {
+            if let Some(ref skip_manifest_references) = skip_manifest_references {
+                if skip_manifest_references
+                    .iter()
+                    .any(|skip_manifest_reference| {
+                        reference.secret_name == skip_manifest_reference.secret_name
+                            && (reference.data_item == skip_manifest_reference.data_item
+                                || skip_manifest_reference.data_item == None)
+                    })
+                {
+                    continue;
+                }
+            }
+
+            let secret = api.get(&reference.secret_name).await.context(format!(
+                "annotation '{}/{}.{}: copy' not possible: secret with name '{}' does not exist",
+                COPY_ANNOTATION_BASE,
+                reference.secret_name,
+                reference.data_item.as_ref().unwrap_or(&"".to_string()),
+                reference.secret_name
+            ))?;
+
+            if let Some(data_item) = &reference.data_item {
+                let missing_item_message = format!(
+                        "annotation '{}/{}.{}: copy' not possible: secret '{}' does not contain a data item named '{}'",
+                        COPY_ANNOTATION_BASE,
+                        reference.secret_name,
+                        data_item,
+                        reference.secret_name,
+                        data_item
+                    );
+
+                let manifest = secret.data.context(missing_item_message.clone())?;
+                let manifest = manifest
+                    .get(data_item)
+                    .context(missing_item_message.clone())?
+                    .to_owned();
+
+                manifest_yaml_sources.push(String::from_utf8(manifest.0).unwrap());
+            }
+        }
+
+        Ok(manifest_yaml_sources)
     }
 }
 
@@ -643,7 +772,9 @@ impl Operator for ProjectOperator {
     }
 
     async fn admission_hook(&self, project: Self::Manifest) -> AdmissionResult<Self::Manifest> {
-        let client = self.shared.read().await.client.clone();
+        let shared = self.shared.read().await;
+        let client = shared.client.clone();
+        let default_namespace = shared.default_ns.clone();
         let project_name = project.metadata.name.as_ref().expect("");
 
         let deny = |msg: String| {
@@ -660,7 +791,10 @@ impl Operator for ProjectOperator {
             })
         };
 
-        if let Ok(project_namespace) = Api::<Namespace>::all(client).get(&project_name).await {
+        if let Ok(project_namespace) = Api::<Namespace>::all(client.clone())
+            .get(&project_name)
+            .await
+        {
             if let Some(owner_references) = project_namespace.metadata.owner_references {
                 let ns_owned_by_this_project =
                     owner_references.into_iter().any(|owner_reference| {
@@ -680,6 +814,13 @@ impl Operator for ProjectOperator {
                     project_name
                 ));
             }
+        }
+
+        if let Err(e) = project
+            .associated_manifests(&client, &default_namespace)
+            .await
+        {
+            return deny(format!("{}", e));
         }
 
         AdmissionResult::Allow(project)
