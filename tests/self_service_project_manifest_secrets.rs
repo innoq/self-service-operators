@@ -1,5 +1,7 @@
 mod common;
-use k8s_openapi::api::core::v1::Secret;
+
+use crate::common::WaitForState;
+use k8s_openapi::api::core::v1::{Pod, Secret};
 use kube::api::{ObjectMeta, PostParams};
 use noqnoqnoq::{
     helper,
@@ -7,6 +9,9 @@ use noqnoqnoq::{
 };
 use serial_test::serial;
 use std::collections::BTreeMap;
+use std::time::Duration;
+use tokio::select;
+use tokio::time;
 
 #[tokio::test]
 #[serial]
@@ -100,8 +105,58 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
 async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
+    let (client, _) = common::before_each().await?;
+
+    let name = common::random_name("copy-default-secrets-manifests");
+    let timeout_secs = 20;
+
+    let wait_for_pod_created_handle = common::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"foo".to_string(),
+        WaitForState::Created,
+    );
+
+    let _ = common::install_project(&client, &name).await?;
+    assert!(
+        select! {
+        res = wait_for_pod_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "namespace '{}' should contain a pod called 'foo' should be present after {} seconds",
+        name,
+        timeout_secs
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Result<()> {
+    let (client, _operator) = common::before_each().await?;
+    common::apply_default_manifest_secret(&client, include_str!("templated-pod.yaml")).await?;
+
+    let name = common::random_name("copy-and-template-default-secrets-manifests");
+    let timeout_secs = 20;
+
+    let wait_for_pod_created_handle = common::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"templated-name".to_string(),
+        WaitForState::Created,
+    );
+
+    let _ = common::install_project(&client, &name).await?;
+    assert!(
+        select! {
+        res = wait_for_pod_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "namespace '{}' should contain a pod called 'templated-name' should be present after {} seconds",
+        name,
+        timeout_secs
+    );
+
     Ok(())
 }
 

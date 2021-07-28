@@ -9,6 +9,8 @@ metadata:
   name: sample-self-service-project
 spec:
   owner: superdev@example.com
-  private: false
+  manifestValues:
+    project_repo: github.com/innoq/noqnoqnoq
+    project_name: self-service-project
 
 

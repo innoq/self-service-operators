@@ -35,13 +35,15 @@ spec:
             spec:
               description: a self service project that will create a namespace per project with the owner having cluster-admin rights in this namespace
               properties:
+                manifestValues:
+                  additionalProperties:
+                    type: string
+                  description: a map of values that should be templated into manifests that get created
+                  nullable: true
+                  type: object
                 owner:
                   description: Owner of this project -- this user will have cluster-admin rights within the created namespace it must be the user name of this user
                   type: string
-                private:
-                  description: whether this is a private project or whether other developers should be able to get developers access
-                  nullable: true
-                  type: boolean
               required:
                 - owner
               type: object
@@ -57,6 +59,7 @@ spec:
                     - Initializing
                     - CreatingNamespace
                     - SettingUpRBACPermissions
+                    - ApplyingManifests
                     - FailedDueToError
                     - WaitingForChanges
                   nullable: true

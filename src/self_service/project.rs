@@ -1,5 +1,7 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use futures::{StreamExt, TryStreamExt};
+use handlebars::Handlebars;
+use k8s_openapi::ByteString;
 use kube::Client;
 use std::cmp::PartialEq;
 use std::sync::Arc;
@@ -12,6 +14,7 @@ use krator::{
 use kube::{Api, CustomResource, Resource};
 // use kube::api::ListParams;
 use super::Sample;
+use crate::helper;
 use crate::project::ProjectPhase::Initializing;
 use k8s_openapi::api::core::v1::{Namespace, Secret};
 use k8s_openapi::api::rbac::v1::{
@@ -24,7 +27,7 @@ use krator_derive::AdmissionWebhook;
 use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio::sync::RwLock;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
@@ -51,6 +54,7 @@ pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
 #[admission_webhook_features(secret, service, admission_webhook_config)]
 /// a self service project that will create a namespace per project with the owner having cluster-admin
 /// rights in this namespace
+#[serde(rename_all = "camelCase")]
 #[kube(
     group = "selfservice.innoq.io",
     version = "v1",
@@ -68,8 +72,8 @@ pub struct ProjectSpec {
     /// it must be the user name of this user
     pub owner: String,
 
-    /// whether this is a private project or whether other developers should be able to get developers access
-    pub private: Option<bool>,
+    /// a map of values that should be templated into manifests that get created
+    pub manifest_values: Option<HashMap<String, String>>,
 }
 
 // TODO: this is just for nicer test output ...
@@ -82,9 +86,18 @@ impl k8s_openapi::Resource for Project {
 
 impl Sample for ProjectSpec {
     fn sample() -> Self {
+        let mut manifest_values = HashMap::new();
+        manifest_values.insert(
+            "project_repo".to_string(),
+            "github.com/innoq/noqnoqnoq".to_string(),
+        );
+        manifest_values.insert(
+            "project_name".to_string(),
+            "self-service-project".to_string(),
+        );
         ProjectSpec {
             owner: "superdev@example.com".to_string(),
-            private: Some(false),
+            manifest_values: Some(manifest_values),
         }
     }
 }
@@ -214,11 +227,49 @@ impl Project {
                     .context(missing_item_message.clone())?
                     .to_owned();
 
-                manifest_yaml_sources.push(String::from_utf8(manifest.0).unwrap());
+                let rendered_manifest = self.render(&manifest, data_item).context(format!(
+                    "error rendering '{}' from secret '{}':",
+                    data_item, reference.secret_name
+                ))?;
+                manifest_yaml_sources.push(rendered_manifest);
+            } else {
+                // copy all data items of this secret
+                let manifests = secret.data.context(format!(
+                    "secret '{}' does not have any data",
+                    reference.secret_name
+                ))?;
+
+                for (data_item, manifest) in manifests.iter() {
+                    let rendered_manifest = self.render(
+                        manifest,
+                        &format!("{}/{}", reference.secret_name, data_item),
+                    )?;
+                    manifest_yaml_sources.push(rendered_manifest);
+                }
             }
         }
-
         Ok(manifest_yaml_sources)
+    }
+
+    fn render(&self, template: &ByteString, name: &str) -> anyhow::Result<String> {
+        let template = String::from_utf8(template.to_owned().0).unwrap_or(String::from(""));
+
+        let manifest_values = match &self.spec.manifest_values {
+            Some(manifest_values) => manifest_values.to_owned(),
+            None => HashMap::new(),
+        };
+
+        let mut reg = Handlebars::new();
+        reg.set_strict_mode(true);
+        reg.register_template_string(name, &template)?;
+
+        match reg.render(name, &manifest_values) {
+            Ok(manifest) => Ok(manifest),
+            Err(e) => bail!(
+                "{} (did you provide all necessary manifestValues in the project spec?)",
+                e
+            ),
+        }
     }
 }
 
@@ -272,6 +323,7 @@ enum ProjectPhase {
     Initializing,
     CreatingNamespace,
     SettingUpRBACPermissions,
+    ApplyingManifests,
     FailedDueToError,
     WaitingForChanges,
 }
@@ -442,8 +494,7 @@ impl State<ProjectState> for Error {
 #[derive(Debug, Default)]
 /// Project is sleeping.
 struct SetupRBACPermissions;
-
-impl TransitionTo<WaitForChanges> for SetupRBACPermissions {}
+impl TransitionTo<ApplyManifests> for SetupRBACPermissions {}
 impl TransitionTo<Error> for SetupRBACPermissions {}
 
 #[async_trait::async_trait]
@@ -561,7 +612,7 @@ impl State<ProjectState> for SetupRBACPermissions {
             }
         }
 
-        Transition::next(self, WaitForChanges)
+        Transition::next(self, ApplyManifests)
     }
 
     async fn status(
@@ -573,6 +624,58 @@ impl State<ProjectState> for SetupRBACPermissions {
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::SettingUpRBACPermissions),
             message: Some("setting up permissions".to_string()),
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+struct ApplyManifests;
+impl TransitionTo<WaitForChanges> for ApplyManifests {}
+impl TransitionTo<Error> for ApplyManifests {}
+
+#[async_trait::async_trait]
+impl State<ProjectState> for ApplyManifests {
+    async fn next(
+        self: Box<Self>,
+        shared: Arc<RwLock<SharedState>>,
+        state: &mut ProjectState,
+        manifest: Manifest<Project>,
+    ) -> Transition<ProjectState> {
+        let shared = shared.read().await;
+        let project = manifest.latest();
+        let manifests = project
+            .associated_manifests(&shared.client, &shared.default_ns)
+            .await;
+
+        match manifests {
+            Err(e) => {
+                state.error = e.to_string();
+                return Transition::next(self, Error);
+            }
+            Ok(manifests) => {
+                for yaml in manifests.iter() {
+                    if let Err(e) =
+                        helper::apply_yaml_manifest(&shared.client, yaml, &project).await
+                    {
+                        state.error = e.to_string();
+                        return Transition::next(self, Error);
+                    }
+                }
+            }
+        }
+
+        Transition::next(self, WaitForChanges)
+    }
+
+    async fn status(
+        &self,
+        state: &mut ProjectState,
+        _manifest: &Project,
+    ) -> anyhow::Result<ProjectStatus> {
+        debug!("status() in ApplyManifests");
+        Ok(ProjectStatus {
+            phase: Some(ProjectPhase::ApplyingManifests),
+            message: Some("applying configured manifests".to_string()),
         })
     }
 }
@@ -820,7 +923,7 @@ impl Operator for ProjectOperator {
             .associated_manifests(&client, &default_namespace)
             .await
         {
-            return deny(format!("{}", e));
+            return deny(e.to_string());
         }
 
         AdmissionResult::Allow(project)

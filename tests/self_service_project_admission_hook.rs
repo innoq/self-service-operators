@@ -94,7 +94,66 @@ async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> 
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_if_secret_does_not_contain_addressed_data_item() -> anyhow::Result<()> {
+async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyhow::Result<()> {
+    let (_, operator) = common::before_each().await?;
+
+    let name = common::random_name("missing-secret-item");
+    let mut project = Project::new(&name, Default::default());
+
+    let mut meta_data = project.meta_mut();
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        format!(
+            "{}/{}.foo",
+            project::COPY_ANNOTATION_BASE,
+            project::DEFAULT_MANIFESTS_SECRET
+        ),
+        project::COPY_ANNOTATION_COPY_VALUE.to_string(),
+    );
+    meta_data.annotations = Some(annotations);
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(
+                status.message,
+                Some(format!("annotation 'project.selfservice.innoq.io/{}.foo: copy' not possible: secret '{}' does not contain a data item named 'foo'", project::DEFAULT_MANIFESTS_SECRET, project::DEFAULT_MANIFESTS_SECRET))
+            );
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => panic!(
+            "admission hook did not fail even though the project's annotations referenced a non existant secret"
+        ),
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_fail_if_tempalte_vals_are_misssing() -> anyhow::Result<()> {
+    let (client, operator) = common::before_each().await?;
+
+    common::apply_default_manifest_secret(&client, include_str!("templated-pod.yaml")).await?;
+
+    let name = common::random_name("missing-template-val");
+    let project = Project::new(&name, Default::default());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(
+                status.message,
+                Some("Error rendering \"default-project-manifests/pod.yaml\" line 5, col 9: Variable \"name\" not found in strict mode. (did you provide all necessary manifestValues in the project spec?)".to_string())
+            );
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => panic!("admission hook did not fail even a manifest value was missing"),
+    }
     Ok(())
 }

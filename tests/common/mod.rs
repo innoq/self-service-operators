@@ -13,7 +13,7 @@ use noqnoqnoq::{
     project::{Project, ProjectOperator},
     self_service::{project, Sample},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{convert::TryFrom, path::Path};
 use tokio::select;
@@ -24,7 +24,9 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let (config, client) = get_client().await?;
 
     assert!(
-        install_default_manifest_secret(&client).await.is_ok(),
+        apply_default_manifest_secret(&client, include_str!("../pod.yaml"))
+            .await
+            .is_ok(),
         "installing default manifest secret should work"
     );
 
@@ -64,8 +66,9 @@ pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error>
     Ok((config, client))
 }
 
-pub async fn install_default_manifest_secret(
+pub async fn apply_default_manifest_secret(
     client: &kube::Client,
+    manifest: &str,
 ) -> anyhow::Result<(), anyhow::Error> {
     let wait_for_secret_created_handle = wait_for_state(
         &kube::Api::<Secret>::all(client.clone()),
@@ -77,6 +80,10 @@ pub async fn install_default_manifest_secret(
         project::SECRET_ANNOTATION_KEY.to_string(),
         project::SECRET_ANNOTATION_VALUE.to_string(),
     );
+
+    let mut secret_items = BTreeMap::new();
+    secret_items.insert("pod.yaml".to_string(), manifest.to_string());
+
     kube::Api::<Secret>::namespaced(client.clone(), "default")
         .patch(
             project::DEFAULT_MANIFESTS_SECRET,
@@ -86,7 +93,8 @@ pub async fn install_default_manifest_secret(
                 ..Default::default()
             },
             &Patch::Apply(&Secret {
-                data: Some(BTreeMap::new()),
+                data: None,
+                string_data: Some(secret_items),
                 metadata: ObjectMeta {
                     name: Some(project::DEFAULT_MANIFESTS_SECRET.to_string()),
                     annotations: Some(annotations),
@@ -280,7 +288,14 @@ pub async fn install_project(
     let wait_for_project_created_handle =
         wait_for_state(&project_api, &name, WaitForState::Created);
 
-    let project = project::Project::new(name.as_str(), project::ProjectSpec::sample());
+    let mut manifest_values = HashMap::new();
+    manifest_values.insert("name".to_string(), "templated-name".to_string());
+
+    let mut spec = project::ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values);
+
+    let project = project::Project::new(name.as_str(), spec);
+
     let project_resource = project_api.create(&PostParams::default(), &project).await;
 
     assert!(

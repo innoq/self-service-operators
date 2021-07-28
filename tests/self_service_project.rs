@@ -186,7 +186,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
     let (_, client) = common::get_client().await?;
 
     assert!(
-        common::install_default_manifest_secret(&client)
+        common::apply_default_manifest_secret(&client, include_str!("pod.yaml"))
             .await
             .is_ok(),
         "installing default manifest secret should work"
