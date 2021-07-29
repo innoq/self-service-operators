@@ -175,7 +175,7 @@ impl Project {
                     let secret_and_item = key
                         .to_string()
                         .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
-                    let secret_and_item = secret_and_item.split('.').collect::<Vec<_>>();
+                    let secret_and_item = secret_and_item.splitn(2, '.').collect::<Vec<_>>();
 
                     ManifestReference {
                         secret_name: secret_and_item[0].to_string(),
@@ -191,8 +191,7 @@ impl Project {
 
         let api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), namespace);
 
-        let mut manifest_yaml_sources = vec![];
-        for reference in manifest_references.iter() {
+        let skip = |reference: &ManifestReference| -> bool {
             if let Some(ref skip_manifest_references) = skip_manifest_references {
                 if skip_manifest_references
                     .iter()
@@ -202,8 +201,16 @@ impl Project {
                                 || skip_manifest_reference.data_item == None)
                     })
                 {
-                    continue;
+                    return true;
                 }
+            }
+            false
+        };
+
+        let mut manifest_yaml_sources = vec![];
+        for reference in manifest_references.iter() {
+            if skip(reference) {
+                continue;
             }
 
             let secret = api.get(&reference.secret_name).await.context(format!(
@@ -243,6 +250,13 @@ impl Project {
                 ))?;
 
                 for (data_item, manifest) in manifests.iter() {
+                    if skip(&ManifestReference {
+                        secret_name: reference.secret_name.clone(),
+                        data_item: Some(data_item.to_owned()),
+                    }) {
+                        continue;
+                    }
+
                     let rendered_manifest = self.render(
                         manifest,
                         &format!("{}/{}", reference.secret_name, data_item),

@@ -234,7 +234,54 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
 async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
+    let (client, _operator) = common::before_each().await?;
+    common::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        include_str!("templated-pod.yaml"),
+    )
+    .await?;
+
+    let name = common::random_name("skip-annotated-manifest");
+
+    let mut manifest_values = HashMap::new();
+    manifest_values.insert("name".to_string(), "extra-pod".to_string());
+
+    let mut spec = project::ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values);
+
+    let mut annotations = BTreeMap::new();
+
+    // copy all manifests from extra-manifests but skip the 'pod.yaml' manifest
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests.pod.yaml".to_string(),
+        "skip".to_string(),
+    );
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests".to_string(),
+        "copy".to_string(),
+    );
+
+    annotations.insert(
+        "project.selfservice.innoq.io/default-project-manifests.pod.yaml".to_string(),
+        "skip".to_string(),
+    );
+
+    let project = project::Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations),
+            ..Default::default()
+        },
+        spec,
+        ..Default::default()
+    };
+
+    let manifests = project.associated_manifests(&client, "default").await?;
+
+    // println!("{}", manifests[0]);
+    assert_eq!(manifests.len(), 0, "all manifests should be skipped");
+
     Ok(())
 }
