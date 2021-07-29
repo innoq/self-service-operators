@@ -152,7 +152,10 @@ impl Project {
                     let secret_and_item = key
                         .to_string()
                         .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
-                    let secret_and_item = secret_and_item.split('.').collect::<Vec<_>>();
+
+                    // we do a splitn here as the data item name can well contain a '.' ... therefore secret
+                    // names must not contain a '.' in their name (even thought it's allowed in kubernetes)
+                    let secret_and_item = secret_and_item.splitn(2, '.').collect::<Vec<_>>();
 
                     ManifestReference {
                         secret_name: secret_and_item[0].to_string(),

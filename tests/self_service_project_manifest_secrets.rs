@@ -1,14 +1,15 @@
 mod common;
 
 use crate::common::WaitForState;
-use k8s_openapi::api::core::v1::{Pod, Secret};
+use k8s_openapi::api::core::v1::{Namespace, Pod, Secret};
 use kube::api::{ObjectMeta, PostParams};
 use noqnoqnoq::{
     helper,
     project::{self},
+    self_service::Sample,
 };
 use serial_test::serial;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 use tokio::select;
 use tokio::time;
@@ -135,7 +136,12 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
 #[serial]
 async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Result<()> {
     let (client, _operator) = common::before_each().await?;
-    common::apply_default_manifest_secret(&client, include_str!("templated-pod.yaml")).await?;
+    common::apply_manifest_secret(
+        &client,
+        project::DEFAULT_MANIFESTS_SECRET,
+        include_str!("templated-pod.yaml"),
+    )
+    .await?;
 
     let name = common::random_name("copy-and-template-default-secrets-manifests");
     let timeout_secs = 20;
@@ -162,8 +168,67 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
 
 #[tokio::test]
 #[serial]
-#[ignore = "not yet implemented"]
 async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
+    let (client, _operator) = common::before_each().await?;
+    common::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        include_str!("templated-pod.yaml"),
+    )
+    .await?;
+
+    let name = common::random_name("copy-annotated-manifest");
+    let timeout_secs = 20;
+
+    let mut manifest_values = HashMap::new();
+    manifest_values.insert("name".to_string(), "extra-pod".to_string());
+
+    let mut spec = project::ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values);
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests.pod.yaml".to_string(),
+        "copy".to_string(),
+    );
+
+    let project = project::Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations),
+            ..Default::default()
+        },
+        spec,
+        ..Default::default()
+    };
+
+    let _ = kube::Api::all(client.clone())
+        .create(&PostParams::default(), &project)
+        .await?;
+
+    common::wait_for_state(
+        &kube::Api::<Namespace>::all(client.clone()),
+        &name,
+        WaitForState::Created,
+    )
+    .await?;
+
+    let wait_for_pod_created_handle = common::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"extra-pod".to_string(),
+        WaitForState::Created,
+    );
+
+    assert!(
+        select! {
+        res = wait_for_pod_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "namespace '{}' should contain a pod called 'extra-pod' should be present after {} seconds",
+        name,
+        timeout_secs
+    );
+
     Ok(())
 }
 

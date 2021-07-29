@@ -137,7 +137,12 @@ async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyh
 async fn it_should_fail_if_tempalte_vals_are_misssing() -> anyhow::Result<()> {
     let (client, operator) = common::before_each().await?;
 
-    common::apply_default_manifest_secret(&client, include_str!("templated-pod.yaml")).await?;
+    common::apply_manifest_secret(
+        &client,
+        project::DEFAULT_MANIFESTS_SECRET,
+        include_str!("templated-pod.yaml"),
+    )
+    .await?;
 
     let name = common::random_name("missing-template-val");
     let project = Project::new(&name, Default::default());

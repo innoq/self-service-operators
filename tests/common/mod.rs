@@ -24,9 +24,13 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let (config, client) = get_client().await?;
 
     assert!(
-        apply_default_manifest_secret(&client, include_str!("../pod.yaml"))
-            .await
-            .is_ok(),
+        apply_manifest_secret(
+            &client,
+            project::DEFAULT_MANIFESTS_SECRET,
+            include_str!("../pod.yaml")
+        )
+        .await
+        .is_ok(),
         "installing default manifest secret should work"
     );
 
@@ -66,13 +70,14 @@ pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error>
     Ok((config, client))
 }
 
-pub async fn apply_default_manifest_secret(
+pub async fn apply_manifest_secret(
     client: &kube::Client,
+    name: &str,
     manifest: &str,
 ) -> anyhow::Result<(), anyhow::Error> {
     let wait_for_secret_created_handle = wait_for_state(
         &kube::Api::<Secret>::all(client.clone()),
-        &project::DEFAULT_MANIFESTS_SECRET.to_string(),
+        &name.to_string(),
         WaitForState::Updated,
     );
     let mut annotations = BTreeMap::new();
@@ -86,7 +91,7 @@ pub async fn apply_default_manifest_secret(
 
     kube::Api::<Secret>::namespaced(client.clone(), "default")
         .patch(
-            project::DEFAULT_MANIFESTS_SECRET,
+            name,
             &PatchParams {
                 force: true,
                 field_manager: Some("operator-test".to_string()),
@@ -96,7 +101,7 @@ pub async fn apply_default_manifest_secret(
                 data: None,
                 string_data: Some(secret_items),
                 metadata: ObjectMeta {
-                    name: Some(project::DEFAULT_MANIFESTS_SECRET.to_string()),
+                    name: Some(name.to_string()),
                     annotations: Some(annotations),
                     ..Default::default()
                 },
@@ -251,11 +256,20 @@ where
                     }
                 },
                 Ok(None) => {
-                    // happens, if nothing watchable was found (e.g. watching for somehing in a namespace
+                    // happens, if nothing watchable was found (e.g. watching for something in a namespace
                     // that does not exist yet
-                    println!("  - too early to watch {} with name {}", K::KIND, name,);
+                    if let WaitForState::Deleted = state {
+                        break;
+                    }
+
+                    eprintln!(
+                        "  - too early to watch {} with name {} (event: {:?})",
+                        K::KIND,
+                        &name,
+                        &state
+                    );
                     tokio::time::sleep(time::Duration::from_millis(250)).await;
-                    break;
+                    panic!("");
                 }
                 Err(e) => {
                     println!(

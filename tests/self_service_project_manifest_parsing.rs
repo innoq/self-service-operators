@@ -103,12 +103,11 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     }
 
     // Create a pod from YAML
-    let pod_manifest = include_str!("pod.yaml");
-
+    let pod_manifest = include_str!("pod2.yaml");
     helper::apply_yaml_manifest(&client, pod_manifest, &project).await?;
 
     let pod = kube::Api::<Pod>::namespaced(client.clone(), name.as_str())
-        .get("foo")
+        .get("bar")
         .await;
 
     assert!(
