@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use std::time::Duration;
 use std::{convert::TryFrom, process::exit};
 
 use clap::{crate_authors, crate_version, Clap};
@@ -93,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
         &opts.default_owner_cluster_role,
         &kubeconfig.default_ns,
         crate::project::DEFAULT_MANIFESTS_SECRET,
+        Duration::from_secs(5),
     )
     .await?;
 

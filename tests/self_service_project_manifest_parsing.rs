@@ -11,21 +11,21 @@ mod common;
 async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
     // Create a pod from JSON
-    let pod_manifest = include_str!("pod.yaml");
-    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await?;
-    assert_eq!("/api/v1/namespaces/xxx/pods".to_string(), pod_api_path);
+    let pod_manifest = include_str!("fixtures/pod.yaml");
+    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx", true).await?;
+    assert_eq!("/api/v1/namespaces/xxx/pods/foo".to_string(), pod_api_path);
 
-    let deploy_manifest = include_str!("deployment.yaml");
-    let deploy_api_path = helper::resource_path(&client, deploy_manifest, "xxx").await?;
+    let deploy_manifest = include_str!("fixtures/deployment.yaml");
+    let deploy_api_path = helper::resource_path(&client, deploy_manifest, "xxx", true).await?;
     assert_eq!(
-        "/apis/apps/v1/namespaces/xxx/deployments".to_string(),
+        "/apis/apps/v1/namespaces/xxx/deployments/my-deployment".to_string(),
         deploy_api_path
     );
 
-    let role_manifest = include_str!("role.yaml");
-    let role_api_path = helper::resource_path(&client, role_manifest, "xxx").await?;
+    let role_manifest = include_str!("fixtures/role.yaml");
+    let role_api_path = helper::resource_path(&client, role_manifest, "xxx", true).await?;
     assert_eq!(
-        "/apis/rbac.authorization.k8s.io/v1/namespaces/xxx/roles".to_string(),
+        "/apis/rbac.authorization.k8s.io/v1/namespaces/xxx/roles/podreader".to_string(),
         role_api_path
     );
 
@@ -38,7 +38,7 @@ async fn it_rejects_cluster_wide_manifests() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
     let self_service_project_manifest = include_str!("../self-service-project-manifest.yaml");
     let self_service_project_path =
-        helper::resource_path(&client, self_service_project_manifest, "xxx").await;
+        helper::resource_path(&client, self_service_project_manifest, "xxx", true).await;
     assert!(
         self_service_project_path.is_err(),
         "cluster non-namespaced resources should yield an error"
@@ -61,8 +61,8 @@ async fn it_rejects_cluster_wide_manifests() -> anyhow::Result<()> {
 async fn it_rejects_manifests_with_a_set_namespace() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
     // Create a pod from JSON
-    let pod_manifest = include_str!("namespaced_pod.yaml");
-    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx").await;
+    let pod_manifest = include_str!("fixtures/namespaced_pod.yaml");
+    let pod_api_path = helper::resource_path(&client, pod_manifest, "xxx", true).await;
     assert!(
         pod_api_path.is_err(),
         "resources with explicit namespace should yield error"
@@ -103,8 +103,8 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     }
 
     // Create a pod from YAML
-    let pod_manifest = include_str!("pod2.yaml");
-    helper::apply_yaml_manifest(&client, pod_manifest, &project).await?;
+    let pod_manifest = include_str!("fixtures/pod2.yaml");
+    helper::apply_yaml_manifest(&client, pod_manifest, &project, true).await?;
 
     let pod = kube::Api::<Pod>::namespaced(client.clone(), name.as_str())
         .get("bar")

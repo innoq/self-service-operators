@@ -140,7 +140,7 @@ async fn it_should_fail_if_tempalte_vals_are_misssing() -> anyhow::Result<()> {
     common::apply_manifest_secret(
         &client,
         project::DEFAULT_MANIFESTS_SECRET,
-        include_str!("templated-pod.yaml"),
+        vec![include_str!("fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -154,7 +154,7 @@ async fn it_should_fail_if_tempalte_vals_are_misssing() -> anyhow::Result<()> {
             assert_eq!(status.code, Some(409));
             assert_eq!(
                 status.message,
-                Some("Error rendering \"default-project-manifests/pod.yaml\" line 5, col 9: Variable \"name\" not found in strict mode. (did you provide all necessary manifestValues in the project spec?)".to_string())
+                Some("Error rendering \"default-project-manifests/resource0\" line 5, col 9: Variable \"name\" not found in strict mode. (did you provide all necessary manifestValues in the project spec?)".to_string())
             );
             assert_eq!(status.status, Some("Failure".to_string()));
         }

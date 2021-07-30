@@ -1,0 +1,11 @@
+# invalid.yaml
+---
+apiVersion: v1
+kind: INVALID
+metadata:
+  name: foo
+spec:
+  containers:
+    - name: foo
+      image: alpine
+      command: ['sh', '-c', 'echo Hello Kubernetes! && tail -f /dev/null']

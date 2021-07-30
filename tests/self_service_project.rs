@@ -3,9 +3,9 @@ use anyhow::bail;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
 
-use kube::api::DeleteParams;
-use kube::Resource;
-use noqnoqnoq::project::{self, Project};
+use kube::api::{DeleteParams, PostParams};
+use kube::{Resource, ResourceExt};
+use noqnoqnoq::project::{self, Project, ProjectSpec};
 use serial_test::serial;
 use std::time::Duration;
 use tokio::select;
@@ -56,6 +56,42 @@ async fn it_creates_and_deletes_namespace() -> anyhow::Result<()> {
     },
         _ = time::sleep(Duration::from_secs(timeout_secs)) => bail!("deleting project {} deletes project and namespace within {} seconds", name, timeout_secs)
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
+    let (client, _) = common::before_each().await?;
+
+    let name = common::random_name("update-project");
+    let _ = common::install_project(&client, &name).await?;
+
+    let api: kube::Api<Project> = kube::Api::all(client.clone());
+
+    let _ = common::assert_project_is_in_waiting_state(&client, &name).await;
+
+    let mut project = api.get(&name).await?;
+    let resource_version = project.resource_version();
+    project.spec = ProjectSpec {
+        owner: "newowner@example.com".to_string(),
+        manifest_values: project.spec.manifest_values,
+    };
+    let meta = project.meta_mut();
+    meta.resource_version = resource_version;
+    meta.managed_fields = None;
+
+    if let Err(e) = api.replace(&name, &PostParams::default(), &project).await {
+        panic!("error updating project: {:?}:\n{}", &project, e);
+    }
+
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
 
     Ok(())
 }
@@ -173,9 +209,12 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
         "cluster role binding subject name should be correct"
     );
 
-    kube::Api::<project::Project>::all(client.clone())
-        .delete(&name, &DeleteParams::default())
-        .await?;
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
 
     Ok(())
 }
@@ -189,7 +228,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
         common::apply_manifest_secret(
             &client,
             project::DEFAULT_MANIFESTS_SECRET,
-            include_str!("pod.yaml")
+            vec![include_str!("fixtures/pod.yaml")]
         )
         .await
         .is_ok(),
@@ -201,6 +240,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
         "non-existant-cluster-role-name",
         "default",
         project::DEFAULT_MANIFESTS_SECRET,
+        Duration::from_secs(0),
     )
     .await
     {
@@ -279,16 +319,12 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
         "role-ref kind should be correct"
     );
 
-    kube::Api::<project::Project>::all(client.clone())
-        .delete(name.as_str(), &DeleteParams::default())
-        .await?;
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
 
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-#[ignore = "not yet implemented"]
-async fn it_should_not_create_namespace_if_a_resource_has_problems() -> anyhow::Result<()> {
     Ok(())
 }

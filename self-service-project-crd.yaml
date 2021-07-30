@@ -27,6 +27,14 @@ spec:
           jsonPath: ".metadata.creationTimestamp"
           name: Age
           type: date
+        - description: current phase of this resource
+          jsonPath: ".status.phase"
+          name: Phase
+          type: string
+        - description: current status
+          jsonPath: ".status.summary"
+          name: Status summary
+          type: string
       name: v1
       schema:
         openAPIV3Schema:
@@ -62,6 +70,9 @@ spec:
                     - ApplyingManifests
                     - FailedDueToError
                     - WaitingForChanges
+                  nullable: true
+                  type: string
+                summary:
                   nullable: true
                   type: string
               type: object

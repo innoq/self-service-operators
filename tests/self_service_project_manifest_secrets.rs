@@ -20,22 +20,23 @@ async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result
     let (_, client) = common::get_client().await?;
 
     match project::ProjectOperator::new(
-        client.clone(),
-        project::OWNER_ROLE_BINDING_NAME,
-        "default",
-        "non-existant-secret",
-    )
-    .await
-    {
-        Ok(_) => panic!(
-            "project operator should fail if the given default manifests secret does not exist"
-        ),
-        Err(e) => assert_eq!(
-            e.to_string(),
-            "no Secret with name 'non-existant-secret' in namespace 'default' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
-            "error message should be correct"
-        ),
-    };
+		client.clone(),
+		project::OWNER_ROLE_BINDING_NAME,
+		"default",
+		"non-existant-secret",
+        Duration::from_secs(0)
+	)
+	.await
+	{
+		Ok(_) => panic!(
+			"project operator should fail if the given default manifests secret does not exist"
+		),
+		Err(e) => assert_eq!(
+			e.to_string(),
+			"no Secret with name 'non-existant-secret' in namespace 'default' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
+			"error message should be correct"
+		),
+	};
     Ok(())
 }
 
@@ -90,16 +91,23 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     let resources = helper::get_manifests_secret(&client, "standard-secret", &name).await;
     assert!(resources.is_err());
     assert_eq!(
-        resources.unwrap_err().to_string(),
-        format!(
-            "Error accessing secret 'standard-secret': only secrets with the annotation '{}: {}' can be accessed by the project operator",
-            project::SECRET_ANNOTATION_KEY,
-            project::SECRET_ANNOTATION_VALUE
-        )
-    );
+		resources.unwrap_err().to_string(),
+		format!(
+			"Error accessing secret 'standard-secret': only secrets with the annotation '{}: {}' can be accessed by the project operator",
+			project::SECRET_ANNOTATION_KEY,
+			project::SECRET_ANNOTATION_VALUE
+		)
+	);
 
     let resources = helper::get_manifests_secret(&client, "annotated-secret", &name).await;
     assert!(resources.is_ok());
+
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
 
     Ok(())
 }
@@ -129,6 +137,13 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
         timeout_secs
     );
 
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
+
     Ok(())
 }
 
@@ -139,7 +154,7 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
     common::apply_manifest_secret(
         &client,
         project::DEFAULT_MANIFESTS_SECRET,
-        include_str!("templated-pod.yaml"),
+        vec![include_str!("fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -154,13 +169,20 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
 
     let _ = common::install_project(&client, &name).await?;
     assert!(
-        select! {
-        res = wait_for_pod_created_handle => res.is_ok(),
-        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
-        },
-        "namespace '{}' should contain a pod called 'templated-name' should be present after {} seconds",
-        name,
-        timeout_secs
+		select! {
+		res = wait_for_pod_created_handle => res.is_ok(),
+		_ = time::sleep(Duration::from_secs(timeout_secs)) => false
+		},
+		"namespace '{}' should contain a pod called 'templated-name' should be present after {} seconds",
+		name,
+		timeout_secs
+	);
+
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
     );
 
     Ok(())
@@ -173,7 +195,7 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     common::apply_manifest_secret(
         &client,
         "extra-manifests",
-        include_str!("templated-pod.yaml"),
+        vec![include_str!("fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -188,7 +210,7 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
-        "project.selfservice.innoq.io/extra-manifests.pod.yaml".to_string(),
+        "project.selfservice.innoq.io/extra-manifests.resource0".to_string(),
         "copy".to_string(),
     );
 
@@ -229,6 +251,13 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
         timeout_secs
     );
 
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
+
     Ok(())
 }
 
@@ -239,7 +268,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     common::apply_manifest_secret(
         &client,
         "extra-manifests",
-        include_str!("templated-pod.yaml"),
+        vec![include_str!("fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -255,7 +284,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
 
     // copy all manifests from extra-manifests but skip the 'pod.yaml' manifest
     annotations.insert(
-        "project.selfservice.innoq.io/extra-manifests.pod.yaml".to_string(),
+        "project.selfservice.innoq.io/extra-manifests.resource0".to_string(),
         "skip".to_string(),
     );
     annotations.insert(
@@ -264,7 +293,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     );
 
     annotations.insert(
-        "project.selfservice.innoq.io/default-project-manifests.pod.yaml".to_string(),
+        "project.selfservice.innoq.io/default-project-manifests.resource0".to_string(),
         "skip".to_string(),
     );
 
@@ -278,10 +307,148 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let manifests = project.associated_manifests(&client, "default").await?;
+    let manifests = project
+        .associated_manifests(&client, project::DEFAULT_MANIFESTS_SECRET, "default")
+        .await?;
 
     // println!("{}", manifests[0]);
     assert_eq!(manifests.len(), 0, "all manifests should be skipped");
 
     Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_eventually_install_manifests() -> anyhow::Result<()> {
+    let (client, _) = common::before_each().await?;
+
+    let name = common::random_name("install-manifests");
+    let timeout_secs = 20;
+
+    common::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        vec![
+            include_str!("fixtures/sa.yaml"),
+            include_str!("fixtures/pod-sa.yaml"),
+        ],
+    )
+    .await?;
+
+    let mut manifest_values = HashMap::new();
+    manifest_values.insert("name".to_string(), "standard-pod".to_string());
+
+    let mut spec = project::ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values);
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests".to_string(),
+        "copy".to_string(),
+    );
+
+    let project = project::Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations),
+            ..Default::default()
+        },
+        spec,
+        ..Default::default()
+    };
+
+    let project_api: kube::Api<project::Project> = kube::Api::all(client.clone());
+    let _ = project_api.create(&PostParams::default(), &project).await;
+
+    let wait_for_pod_created_handle = common::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"pod-sa".to_string(),
+        WaitForState::Created,
+    );
+
+    assert!(
+        select! {
+        res = wait_for_pod_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "namespace '{}' should contain a pod called 'pod-sa' should be present after {} seconds",
+        name,
+        timeout_secs
+    );
+
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
+
+    assert!(
+        common::assert_project_is_in_waiting_state(&client, &name)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_fails_with_correct_error_state_when_invalid_manifests_are_used() -> anyhow::Result<()> {
+    let (client, _) = common::before_each().await?;
+
+    let name = common::random_name("fail-with-invalid-manifests");
+
+    common::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        vec![include_str!("fixtures/invalid.yaml")],
+    )
+    .await?;
+
+    let mut manifest_values = HashMap::new();
+    manifest_values.insert("name".to_string(), "standard-pod".to_string());
+
+    let mut spec = project::ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values);
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests".to_string(),
+        "copy".to_string(),
+    );
+
+    let project = project::Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations),
+            ..Default::default()
+        },
+        spec,
+        ..Default::default()
+    };
+
+    let api: kube::Api<project::Project> = kube::Api::all(client.clone());
+    let _ = api.create(&PostParams::default(), &project).await?;
+
+    let mut last_summary = "".to_string();
+    for _ in 0..20 {
+        let _ = time::sleep(Duration::from_secs(1)).await;
+        let project = api.get(&name).await?;
+        if project.status.clone().unwrap().summary.is_none() {
+            continue;
+        }
+
+        let status = &project.status.clone().unwrap();
+        last_summary = status.summary.clone().unwrap();
+        if last_summary == *"error: error installing manifest: giving up aft..." {
+            return Ok(());
+        }
+    }
+
+    panic!(
+        "correct error state never reached -- last error summary was: {}",
+        last_summary
+    );
 }

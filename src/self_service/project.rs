@@ -1,10 +1,11 @@
 use anyhow::{anyhow, bail};
+
 use futures::{StreamExt, TryStreamExt};
 use handlebars::Handlebars;
 use k8s_openapi::ByteString;
 use kube::Client;
 use std::cmp::PartialEq;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use krator::{
@@ -64,7 +65,9 @@ pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
     printcolumn = r#"
      {"name":"Owner", "type":"string", "description":"owner of this project", "jsonPath":".spec.owner"},
      {"name":"Private", "type":"string", "description":"whether the projects's namespace is private", "jsonPath":".spec.private"},
-     {"name":"Age", "type":"date", "description":"how old this resource is", "jsonPath":".metadata.creationTimestamp"}
+     {"name":"Age", "type":"date", "description":"how old this resource is", "jsonPath":".metadata.creationTimestamp"},
+     {"name":"Phase", "type":"string", "description":"current phase of this resource", "jsonPath":".status.phase"},
+     {"name":"Status summary", "type":"string", "description":"current status", "jsonPath":".status.summary"}
   "#
 )]
 pub struct ProjectSpec {
@@ -110,6 +113,77 @@ impl Project {
         )
     }
 
+    pub fn rbac_manifests(
+        &self,
+        default_owner_cluster_role: &str,
+    ) -> (RoleBinding, ClusterRole, ClusterRoleBinding) {
+        let owner_role_binding_name = OWNER_ROLE_BINDING_NAME.to_string();
+
+        let rolebinding = RoleBinding {
+            metadata: ObjectMeta {
+                name: Some(owner_role_binding_name),
+                owner_references: Some(vec![OwnerReference::from(self)]),
+                ..Default::default()
+            },
+            role_ref: RoleRef {
+                api_group: "rbac.authorization.k8s.io".to_string(),
+                kind: "ClusterRole".to_string(),
+                name: default_owner_cluster_role.to_string(),
+            },
+            subjects: Some(vec![Subject {
+                api_group: None,
+                kind: "User".to_string(),
+                name: self.spec.owner.clone(),
+                namespace: None,
+            }]),
+        };
+
+        let owner_cluster_role = ClusterRole {
+            aggregation_rule: None,
+            metadata: ObjectMeta {
+                name: Some(self.owner_cluster_role_name()),
+                owner_references: Some(vec![OwnerReference::from(self)]),
+                ..Default::default()
+            },
+            rules: Some(vec![PolicyRule {
+                api_groups: Some(vec![Project::group(&()).to_string()]),
+                non_resource_urls: None,
+                resource_names: Some(vec![self.meta().name.as_ref().unwrap().to_string()]),
+                resources: Some(vec![Project::kind(&()).to_string()]),
+                verbs: vec![
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "create".to_string(),
+                    "update".to_string(),
+                    "patch".to_string(),
+                    "delete".to_string(),
+                ],
+            }]),
+        };
+
+        let owner_cluster_role_binding = ClusterRoleBinding {
+            metadata: ObjectMeta {
+                name: Some(self.owner_cluster_role_name()),
+                owner_references: Some(vec![OwnerReference::from(self)]),
+                ..Default::default()
+            },
+            role_ref: RoleRef {
+                api_group: ClusterRole::group(&()).to_string(),
+                kind: ClusterRole::kind(&()).to_string(),
+                name: self.owner_cluster_role_name(),
+            },
+            subjects: Some(vec![Subject {
+                api_group: None,
+                kind: "User".to_string(),
+                name: self.spec.owner.clone(),
+                namespace: None,
+            }]),
+        };
+
+        (rolebinding, owner_cluster_role, owner_cluster_role_binding)
+    }
+
     // for each project a namespace is created and kubernetes resources are created within this
     // namespace. Project manifest can influence which resources get created (or skipped) via annotations:
     //
@@ -127,6 +201,7 @@ impl Project {
     pub async fn associated_manifests(
         &self,
         client: &Client,
+        default_manifests_secret: &str,
         namespace: &str,
     ) -> anyhow::Result<Vec<String>> {
         #[derive(Clone)]
@@ -136,7 +211,7 @@ impl Project {
         }
 
         let mut manifest_references = vec![ManifestReference {
-            secret_name: DEFAULT_MANIFESTS_SECRET.to_string(),
+            secret_name: default_manifests_secret.to_string(),
             data_item: None,
         }];
 
@@ -269,7 +344,8 @@ impl Project {
     }
 
     fn render(&self, template: &ByteString, name: &str) -> anyhow::Result<String> {
-        let template = String::from_utf8(template.to_owned().0).unwrap_or(String::from(""));
+        let template =
+            String::from_utf8(template.to_owned().0).unwrap_or_else(|_| String::from(""));
 
         let manifest_values = match &self.spec.manifest_values {
             Some(manifest_values) => manifest_values.to_owned(),
@@ -349,7 +425,8 @@ enum ProjectPhase {
 #[doc = "Reflects the status of the current self service project"]
 pub struct ProjectStatus {
     phase: Option<ProjectPhase>,
-    message: Option<String>,
+    pub message: Option<String>,
+    pub summary: Option<String>,
 }
 
 impl ObjectStatus for ProjectStatus {
@@ -367,13 +444,19 @@ impl ObjectStatus for ProjectStatus {
             status.insert("message".to_string(), serde_json::Value::String(message));
         };
 
+        if let Some(summary) = self.summary.clone() {
+            status.insert("summary".to_string(), serde_json::Value::String(summary));
+        };
+
         // Create status patch with map.
         serde_json::json!({ "status": serde_json::Value::Object(status) })
     }
 
     fn failed(e: &str) -> ProjectStatus {
+        let message = format!("error: {}", e);
         ProjectStatus {
-            message: Some(format!("Error occurred: {}", e)),
+            summary: Some(helper::shorten_string(&message)),
+            message: Some(message),
             phase: None,
         }
     }
@@ -423,6 +506,10 @@ impl State<ProjectState> for NewProject {
                 "new project {} detected",
                 manifest.metadata.name.as_ref().unwrap()
             )),
+            summary: Some(format!(
+                "new project {} detected",
+                manifest.metadata.name.as_ref().unwrap()
+            )),
         })
     }
 }
@@ -444,10 +531,23 @@ impl State<ProjectState> for CreateNamespace {
 
         let api: kube::Api<Namespace> = kube::Api::all(shared.read().await.client.clone());
         let project = manifest.latest();
+        let name = project.clone().metadata.name.unwrap();
+
+        if let Ok(namespace) = api.get(&name).await {
+            if helper::is_owned_by_project(&project, &namespace) {
+                return Transition::next(self, SetupRBACPermissions);
+            } else {
+                state.error = format!(
+                    "namespace '{}' exists but does not belong to project '{}'",
+                    &name, &name
+                );
+                return Transition::next(self, Error);
+            }
+        }
 
         let namespace = Namespace {
             metadata: ObjectMeta {
-                name: Some(project.clone().metadata.name.unwrap()),
+                name: Some(name),
                 owner_references: Some(vec![OwnerReference::from(&project)]),
                 ..Default::default()
             },
@@ -471,6 +571,7 @@ impl State<ProjectState> for CreateNamespace {
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::CreatingNamespace),
             message: Some(format!("creating namespace {}", state.name)),
+            summary: Some(format!("creating namespace {}", state.name)),
         })
     }
 }
@@ -501,9 +602,11 @@ impl State<ProjectState> for Error {
         _manifest: &Project,
     ) -> anyhow::Result<ProjectStatus> {
         debug!("status() in Error");
+        let message = format!("error: {}", state.error);
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::FailedDueToError),
-            message: Some(format!("error: {}", state.error)),
+            summary: Some(helper::shorten_string(&message)),
+            message: Some(message),
         })
     }
 }
@@ -522,109 +625,32 @@ impl State<ProjectState> for SetupRBACPermissions {
         state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
-        info!("setting up rbac permissions namespace {}", &state.name);
-        debug!("next() in SetupRBACPermissions / name: {}", state.name);
-
         let project = manifest.latest();
 
-        let rolebinding = RoleBinding {
-            metadata: ObjectMeta {
-                name: Some(OWNER_ROLE_BINDING_NAME.to_string()),
-                owner_references: Some(vec![OwnerReference::from(&project)]),
-                ..Default::default()
-            },
-            role_ref: RoleRef {
-                api_group: "rbac.authorization.k8s.io".to_string(),
-                kind: "ClusterRole".to_string(),
-                name: shared.read().await.default_owner_cluster_role.clone(),
-            },
-            subjects: Some(vec![Subject {
-                api_group: None,
-                kind: "User".to_string(),
-                name: project.clone().spec.owner,
-                namespace: None,
-            }]),
-        };
-        {
-            let api: kube::Api<RoleBinding> =
-                kube::Api::namespaced(shared.read().await.client.clone(), &state.name);
-            if let Err(e) = api.create(&PostParams::default(), &rolebinding).await {
-                state.error = format!(
-                    "error creating rolebinding {} in namespace {}: {}",
-                    OWNER_ROLE_BINDING_NAME,
-                    state.name,
-                    e.to_string()
-                );
-                return Transition::next(self, Error);
-            }
-        }
+        let (rolebinding, owner_cluster_role, owner_cluster_role_binding) =
+            project.rbac_manifests(&shared.read().await.default_owner_cluster_role);
+        let client = shared.read().await.client.clone();
 
-        let owner_cluster_role = ClusterRole {
-            aggregation_rule: None,
-            metadata: ObjectMeta {
-                name: Some(project.owner_cluster_role_name()),
-                owner_references: Some(vec![OwnerReference::from(&project)]),
-                ..Default::default()
-            },
-            rules: Some(vec![PolicyRule {
-                api_groups: Some(vec![Project::group(&()).to_string()]),
-                non_resource_urls: None,
-                resource_names: Some(vec![state.name.clone()]),
-                resources: Some(vec![Project::kind(&()).to_string()]),
-                verbs: vec![
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "create".to_string(),
-                    "update".to_string(),
-                    "patch".to_string(),
-                    "delete".to_string(),
-                ],
-            }]),
-        };
-        let api: kube::Api<ClusterRole> = kube::Api::all(shared.read().await.client.clone());
-        if let Err(e) = api
-            .create(&PostParams::default(), &owner_cluster_role)
-            .await
-        {
-            state.error = format!(
-                "error creating owner cluster role {}: {}",
-                project.owner_cluster_role_name(),
-                e.to_string()
-            );
-            return Transition::next(self, Error);
-        }
+        let _ = kube::Api::<Namespace>::all(client.clone())
+            .get(project.meta().name.as_ref().unwrap())
+            .await;
 
-        let owner_cluster_role_binding = ClusterRoleBinding {
-            metadata: ObjectMeta {
-                name: Some(project.owner_cluster_role_name()),
-                owner_references: Some(vec![OwnerReference::from(&project)]),
-                ..Default::default()
-            },
-            role_ref: RoleRef {
-                api_group: ClusterRole::group(&()).to_string(),
-                kind: ClusterRole::kind(&()).to_string(),
-                name: project.owner_cluster_role_name(),
-            },
-            subjects: Some(vec![Subject {
-                api_group: None,
-                kind: "User".to_string(),
-                name: project.spec.owner.clone(),
-                namespace: None,
-            }]),
-        };
+        for (name, manifest) in vec![
+            (
+                "clusterrole",
+                serde_yaml::to_string(&owner_cluster_role).unwrap(),
+            ),
+            (
+                "clusterrolebinding",
+                serde_yaml::to_string(&owner_cluster_role_binding).unwrap(),
+            ),
+            ("rolebinding", serde_yaml::to_string(&rolebinding).unwrap()),
+        ]
+        .iter()
         {
-            let api: kube::Api<ClusterRoleBinding> =
-                kube::Api::all(shared.read().await.client.clone());
-            if let Err(e) = api
-                .create(&PostParams::default(), &owner_cluster_role_binding)
-                .await
-            {
-                state.error = format!(
-                    "error creating owner cluster role binding {}: {}",
-                    project.owner_cluster_role_name(),
-                    e.to_string()
-                );
+            if let Err(e) = helper::apply_yaml_manifest(&client, &manifest, &project, false).await {
+                state.error = format!("error applying {}: {}", name, e);
+
                 return Transition::next(self, Error);
             }
         }
@@ -641,6 +667,7 @@ impl State<ProjectState> for SetupRBACPermissions {
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::SettingUpRBACPermissions),
             message: Some("setting up permissions".to_string()),
+            summary: Some("setting up permissions".to_string()),
         })
     }
 }
@@ -660,8 +687,14 @@ impl State<ProjectState> for ApplyManifests {
     ) -> Transition<ProjectState> {
         let shared = shared.read().await;
         let project = manifest.latest();
+        let delay = shared.manifest_retry_delay;
+
         let manifests = project
-            .associated_manifests(&shared.client, &shared.default_ns)
+            .associated_manifests(
+                &shared.client,
+                &shared.default_manifests_secret,
+                &shared.default_ns,
+            )
             .await;
 
         match manifests {
@@ -669,13 +702,33 @@ impl State<ProjectState> for ApplyManifests {
                 state.error = e.to_string();
                 return Transition::next(self, Error);
             }
+
             Ok(manifests) => {
-                for yaml in manifests.iter() {
+                let mut manifests = manifests
+                    .iter()
+                    .map(|s| (0, s))
+                    .collect::<Vec<(u16, &String)>>();
+
+                let mut iteration = 0;
+                let max_retries = 5;
+                while let Some((i, manifest)) = manifests.pop() {
                     if let Err(e) =
-                        helper::apply_yaml_manifest(&shared.client, yaml, &project).await
+                        helper::apply_yaml_manifest(&shared.client, &manifest, &project, true).await
                     {
-                        state.error = e.to_string();
-                        return Transition::next(self, Error);
+                        if i >= max_retries {
+                            state.error = format!(
+                                "error installing manifest: giving up after {} retries: {}\nmanifest was:\n{}",
+                                i,
+                                e.to_string(),
+                                &manifest
+                            );
+                            return Transition::next(self, Error);
+                        }
+                        if i != iteration {
+                            iteration = i;
+                            tokio::time::sleep(delay).await;
+                        }
+                        manifests.insert(0, (i + 1, &manifest));
                     }
                 }
             }
@@ -686,13 +739,14 @@ impl State<ProjectState> for ApplyManifests {
 
     async fn status(
         &self,
-        state: &mut ProjectState,
+        _state: &mut ProjectState,
         _manifest: &Project,
     ) -> anyhow::Result<ProjectStatus> {
         debug!("status() in ApplyManifests");
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::ApplyingManifests),
             message: Some("applying configured manifests".to_string()),
+            summary: Some("applying configured manifests".to_string()),
         })
     }
 }
@@ -757,6 +811,7 @@ impl State<ProjectState> for WaitForChanges {
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::WaitingForChanges),
             message: Some("waiting for changes".to_string()),
+            summary: Some("waiting for changes".to_string()),
         })
     }
 }
@@ -785,6 +840,7 @@ impl State<ProjectState> for Released {
         Ok(ProjectStatus {
             phase: None,
             message: Some(format!("Bye, {}!", state.name)),
+            summary: Some(format!("Bye, {}!", state.name)),
         })
     }
 }
@@ -801,12 +857,14 @@ pub struct SharedState {
     default_manifests_secret: String,
     default_owner_cluster_role: String,
     default_ns: String,
+    manifest_retry_delay: Duration,
 }
 
 impl Default for SharedState {
     fn default() -> Self {
         SharedState {
             default_manifests_secret: DEFAULT_MANIFESTS_SECRET.to_string(),
+            manifest_retry_delay: Duration::from_secs(5),
             ..Default::default()
         }
     }
@@ -829,12 +887,14 @@ impl ProjectOperator {
         default_owner_cluster_role: &str,
         default_ns: &str,
         default_manifests_secret: &str,
+        manifest_retry_delay: Duration,
     ) -> anyhow::Result<Self> {
         let shared = Arc::new(RwLock::new(SharedState {
             client: client.clone(),
             default_owner_cluster_role: default_owner_cluster_role.to_string(),
             default_ns: default_ns.to_string(),
             default_manifests_secret: default_manifests_secret.to_string(),
+            manifest_retry_delay,
         }));
 
         let _ = crate::helper::get_manifests_secret(&client, default_manifests_secret, default_ns).await.with_context(|| {
@@ -937,7 +997,11 @@ impl Operator for ProjectOperator {
         }
 
         if let Err(e) = project
-            .associated_manifests(&client, &default_namespace)
+            .associated_manifests(
+                &client,
+                &shared.default_manifests_secret,
+                &default_namespace,
+            )
             .await
         {
             return deny(e.to_string());

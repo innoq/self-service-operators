@@ -8,7 +8,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use krator::OperatorRuntime;
 use kube::api::{self, DeleteParams, Patch, PatchParams};
 use kube::api::{PostParams, WatchEvent};
-use kube::config;
+use kube::{config, Client};
 use noqnoqnoq::{
     project::{Project, ProjectOperator},
     self_service::{project, Sample},
@@ -27,7 +27,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
         apply_manifest_secret(
             &client,
             project::DEFAULT_MANIFESTS_SECRET,
-            include_str!("../pod.yaml")
+            vec![include_str!("../fixtures/pod.yaml")]
         )
         .await
         .is_ok(),
@@ -42,6 +42,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
         "admin",
         "default",
         project::DEFAULT_MANIFESTS_SECRET,
+        Duration::from_secs(1),
     )
     .await
     .unwrap();
@@ -73,13 +74,26 @@ pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error>
 pub async fn apply_manifest_secret(
     client: &kube::Client,
     name: &str,
-    manifest: &str,
+    manifests: Vec<&str>,
 ) -> anyhow::Result<(), anyhow::Error> {
+    let api = kube::Api::<Secret>::namespaced(client.clone(), "default");
+
+    if api.get(name).await.is_ok() {
+        api.delete(
+            name,
+            &DeleteParams {
+                ..Default::default()
+            },
+        )
+        .await?;
+    }
+
     let wait_for_secret_created_handle = wait_for_state(
         &kube::Api::<Secret>::all(client.clone()),
         &name.to_string(),
         WaitForState::Updated,
     );
+
     let mut annotations = BTreeMap::new();
     annotations.insert(
         project::SECRET_ANNOTATION_KEY.to_string(),
@@ -87,28 +101,29 @@ pub async fn apply_manifest_secret(
     );
 
     let mut secret_items = BTreeMap::new();
-    secret_items.insert("pod.yaml".to_string(), manifest.to_string());
+    manifests.iter().enumerate().for_each(|(i, manifest)| {
+        secret_items.insert(format!("resource{}", i), manifest.to_string());
+    });
 
-    kube::Api::<Secret>::namespaced(client.clone(), "default")
-        .patch(
-            name,
-            &PatchParams {
-                force: true,
-                field_manager: Some("operator-test".to_string()),
+    api.patch(
+        name,
+        &PatchParams {
+            force: false,
+            field_manager: Some("operator-test".to_string()),
+            ..Default::default()
+        },
+        &Patch::Apply(&Secret {
+            data: None,
+            string_data: Some(secret_items),
+            metadata: ObjectMeta {
+                name: Some(name.to_string()),
+                annotations: Some(annotations),
                 ..Default::default()
             },
-            &Patch::Apply(&Secret {
-                data: None,
-                string_data: Some(secret_items),
-                metadata: ObjectMeta {
-                    name: Some(name.to_string()),
-                    annotations: Some(annotations),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }),
-        )
-        .await?;
+            ..Default::default()
+        }),
+    )
+    .await?;
     let _ = wait_for_secret_created_handle.await;
     Ok(())
 }
@@ -383,4 +398,28 @@ where
     );
 
     Ok(())
+}
+
+pub async fn assert_project_is_in_waiting_state(client: &Client, name: &str) -> anyhow::Result<()> {
+    let mut last_summary = "".to_string();
+
+    let api: kube::Api<project::Project> = kube::Api::all(client.clone());
+    for _ in 0..60 {
+        let _ = time::sleep(Duration::from_secs(1)).await;
+        let project = api.get(&name).await?;
+        if project.status.clone().unwrap().summary.is_none() {
+            continue;
+        }
+
+        let status = &project.status.clone().unwrap();
+        last_summary = status.summary.clone().unwrap();
+        if last_summary == *"waiting for changes" {
+            return Ok(());
+        }
+    }
+
+    panic!(
+        "project should be in waiting state -- last summary was: {}",
+        last_summary
+    );
 }

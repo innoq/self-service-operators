@@ -1,0 +1,15 @@
+# tests/fixtures/pod-sa.yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-sa
+  annotations:
+  labels:
+    app: pod-sa
+spec:
+  serviceAccountName: test-sa
+  containers:
+  - name: pod-sa
+    image: alpine
+    command: ['sh', '-c', 'echo Hello Kubernetes! && sleep 3600']
