@@ -149,7 +149,7 @@ impl Project {
                 api_groups: Some(vec![Project::group(&()).to_string()]),
                 non_resource_urls: None,
                 resource_names: Some(vec![self.meta().name.as_ref().unwrap().to_string()]),
-                resources: Some(vec![Project::kind(&()).to_string()]),
+                resources: Some(vec![Project::plural(&()).to_string()]),
                 verbs: vec![
                     "get".to_string(),
                     "list".to_string(),

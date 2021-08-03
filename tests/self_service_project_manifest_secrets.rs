@@ -329,8 +329,8 @@ async fn it_should_eventually_install_manifests() -> anyhow::Result<()> {
         &client,
         "extra-manifests",
         vec![
-            include_str!("fixtures/sa.yaml"),
             include_str!("fixtures/pod-sa.yaml"),
+            include_str!("fixtures/sa.yaml"),
         ],
     )
     .await?;
