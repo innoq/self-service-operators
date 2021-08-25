@@ -9,6 +9,7 @@
 /kind.kubeconfig
 /local-kind-cluster.sh
 /pre-commit
+/recipe.json
 /s5-crd.yaml.bak
 /s5.yaml
 /self-service-project-crd.yaml

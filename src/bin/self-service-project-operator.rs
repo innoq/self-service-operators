@@ -21,16 +21,29 @@ use noqnoqnoq::self_service::Sample;
   author = crate_authors!()
 )]
 struct Opts {
-    /// Install self service crd into cluster
-    #[clap(short = 'i', long)]
-    install_crd: bool,
-
     /// Prints the self service crd to stdout
-    #[clap(short, long)]
+    #[clap(short = 'c', long)]
     print_crd: bool,
 
+    /// Install self service crd into cluster
+    #[clap(short = 'C', long)]
+    install_crd: bool,
+
+    /// Prints necessary resources to setup admission controller. Uses current namespaces unless set by --namespace
+    #[clap(short = 'a', long)]
+    print_admission_controller_manifests: bool,
+
+    /// Namespace to use when printing / installing admission controller and default namespacec
+    /// for manifest secrets
+    #[clap(short = 'n', long)]
+    namespace: Option<String>,
+
+    /// Skip installation of webhook resources
+    #[clap(short = 'A', long)]
+    skip_install_admission_controller_manifests: bool,
+
     /// Prints an self service project sample manifest
-    #[clap(short = 's', long)]
+    #[clap(short = 'm', long)]
     print_sample_project_manifest: bool,
 
     /// verbose level
@@ -80,6 +93,22 @@ async fn main() -> anyhow::Result<()> {
 
     let kubeconfig = kube::config::Config::infer().await?;
 
+    let namespace = match opts.namespace {
+        Some(ref namespace) => namespace,
+        None => &kubeconfig.default_ns,
+    };
+
+    if opts.print_admission_controller_manifests {
+        println!(
+            "{}",
+            krator::admission::WebhookResources::from(
+                project::Project::admission_webhook_resources(&namespace)
+            )
+        );
+
+        exit(0)
+    }
+
     let client = kube::Client::try_from(kubeconfig.clone())
         .context("error creating kubernetes client from the current environment")?;
 
@@ -89,10 +118,18 @@ async fn main() -> anyhow::Result<()> {
             .and(Ok(()));
     }
 
+    if !opts.skip_install_admission_controller_manifests {
+        let resources = krator::admission::WebhookResources::from(
+            project::Project::admission_webhook_resources(&namespace),
+        );
+
+        resources.apply(&client).await?;
+    }
+
     let tracker = project::ProjectOperator::new(
         client,
         &opts.default_owner_cluster_role,
-        &kubeconfig.default_ns,
+        &namespace,
         crate::project::DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(5),
     )

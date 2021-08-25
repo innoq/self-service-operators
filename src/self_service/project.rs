@@ -318,25 +318,22 @@ impl Project {
                 ))?;
                 manifest_yaml_sources.push(rendered_manifest);
             } else {
-                // copy all data items of this secret
-                let manifests = secret.data.context(format!(
-                    "secret '{}' does not have any data",
-                    reference.secret_name
-                ))?;
+                // copy all data items (if any) of this secret
+                if let Some(manifests) = secret.data {
+                    for (data_item, manifest) in manifests.iter() {
+                        if skip(&ManifestReference {
+                            secret_name: reference.secret_name.clone(),
+                            data_item: Some(data_item.to_owned()),
+                        }) {
+                            continue;
+                        }
 
-                for (data_item, manifest) in manifests.iter() {
-                    if skip(&ManifestReference {
-                        secret_name: reference.secret_name.clone(),
-                        data_item: Some(data_item.to_owned()),
-                    }) {
-                        continue;
+                        let rendered_manifest = self.render(
+                            manifest,
+                            &format!("{}/{}", reference.secret_name, data_item),
+                        )?;
+                        manifest_yaml_sources.push(rendered_manifest);
                     }
-
-                    let rendered_manifest = self.render(
-                        manifest,
-                        &format!("{}/{}", reference.secret_name, data_item),
-                    )?;
-                    manifest_yaml_sources.push(rendered_manifest);
                 }
             }
         }
@@ -897,12 +894,13 @@ impl ProjectOperator {
             manifest_retry_delay,
         }));
 
-        let _ = crate::helper::get_manifests_secret(&client, default_manifests_secret, default_ns).await.with_context(|| {
-                format!(
-                    "no Secret with name '{}' in namespace '{}' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
-                    default_manifests_secret, default_ns
-                )
-        })?;
+        if let Err(e) =
+            crate::helper::get_manifests_secret(&client, default_manifests_secret, default_ns).await
+        {
+            bail!(
+                    "no Secret with name '{}' in namespace '{}' found (this secret should hold default manifests that get applied in each new namespace): {} -- aborting",
+                    default_manifests_secret, default_ns, e);
+        }
 
         let _ = kube::Api::<ClusterRole>::all(client.clone())
             .get(&default_owner_cluster_role)

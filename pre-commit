@@ -1,6 +1,9 @@
 #!/bin/sh -ex
 
-cargo run --bin self-service-project-operator -- --print-crd > self-service-project-crd.yaml
-git diff --exit-code self-service-project-crd.yaml
+cargo run --bin self-service-project-operator -- \
+  --print-crd > chart/self-service-operators/crds/crd.yaml
+
 cargo run --bin self-service-project-operator -- --print-sample-project-manifest > self-service-project-manifest.yaml
+
+git diff --exit-code chart/self-service-operators/crds/crd.yaml
 git diff --exit-code self-service-project-manifest.yaml

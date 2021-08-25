@@ -33,8 +33,8 @@ async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result
 		),
 		Err(e) => assert_eq!(
 			e.to_string(),
-			"no Secret with name 'non-existant-secret' in namespace 'default' found (this secret should hold default manifests that get applied in each new namespace) -- aborting",
-			"error message should be correct"
+			"no Secret with name 'non-existant-secret' in namespace 'default' found (this secret should hold default manifests that get applied in each new namespace): ApiError: secrets \"non-existant-secret\" not found: NotFound (ErrorResponse { status: \"Failure\", message: \"secrets \\\"non-existant-secret\\\" not found\", reason: \"NotFound\", code: 404 }) -- aborting",
+            "error message should be correct"
 		),
 	};
     Ok(())

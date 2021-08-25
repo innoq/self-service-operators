@@ -10,7 +10,7 @@ metadata:
 spec:
   owner: superdev@example.com
   manifestValues:
-    project_repo: github.com/innoq/noqnoqnoq
     project_name: self-service-project
+    project_repo: github.com/innoq/noqnoqnoq
 
 
