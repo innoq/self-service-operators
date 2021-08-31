@@ -316,7 +316,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn it_should_eventually_install_manifests() -> anyhow::Result<()> {
+async fn it_should_eventually_install_correctly_rendered_manifests() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
 
     let name = common::random_name("install-manifests");
@@ -388,7 +388,7 @@ array:
     assert!(cm.data.is_some(), "config map should contain data");
     assert_eq!(
         cm.data.as_ref().unwrap().len(),
-        4,
+        5,
         "config map should three data items"
     );
 
@@ -410,6 +410,11 @@ array:
     assert_eq!(
         cm.data.as_ref().unwrap().get("name"),
         Some(&name),
+        "mapped values should be correctly rendered"
+    );
+    assert_eq!(
+        cm.data.as_ref().unwrap().get("owners"),
+        Some(&"superdev@example.com supradev@example.com".to_string()),
         "mapped values should be correctly rendered"
     );
 

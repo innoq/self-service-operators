@@ -377,6 +377,10 @@ impl Project {
             serde_yaml::to_value("__PROJECT_NAME__").unwrap(),
             serde_yaml::to_value(self.metadata.name.as_ref().unwrap()).unwrap(),
         );
+        template_data.insert(
+            serde_yaml::to_value("__PROJECT_OWNERS__").unwrap(),
+            serde_yaml::to_value(&self.spec.owners).unwrap(),
+        );
 
         let mut reg = Handlebars::new();
         reg.set_strict_mode(true);

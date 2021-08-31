@@ -4,6 +4,7 @@ data:
   arrayZero: {{ array.[0] }}
   arrayTwo: {{ array.[2] }}
   name: {{ __PROJECT_NAME__ }}
+  owners: {{#each __PROJECT_OWNERS__ }}{{ this }} {{/each}}
 kind: ConfigMap
 metadata:
   creationTimestamp: null
