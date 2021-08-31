@@ -47,11 +47,13 @@ spec:
                   description: a map of values that should be templated into manifests that get created
                   nullable: true
                   type: string
-                owner:
+                owners:
                   description: Owner of this project -- this user will have cluster-admin rights within the created namespace it must be the user name of this user
-                  type: string
+                  items:
+                    type: string
+                  type: array
               required:
-                - owner
+                - owners
               type: object
             status:
               description: Reflects the status of the current self service project

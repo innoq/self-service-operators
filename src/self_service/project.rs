@@ -4,6 +4,7 @@ use futures::{StreamExt, TryStreamExt};
 use handlebars::Handlebars;
 use k8s_openapi::ByteString;
 use kube::Client;
+use serde_yaml::Mapping;
 use std::cmp::PartialEq;
 use std::{sync::Arc, time::Duration};
 
@@ -73,7 +74,7 @@ pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
 pub struct ProjectSpec {
     /// Owner of this project -- this user will have cluster-admin rights within the created namespace
     /// it must be the user name of this user
-    pub owner: String,
+    pub owners: Vec<String>,
 
     /// a map of values that should be templated into manifests that get created
     pub manifest_values: Option<String>,
@@ -95,7 +96,10 @@ project_name: self-service-project
 "#;
 
         ProjectSpec {
-            owner: "superdev@example.com".to_string(),
+            owners: vec![
+                "superdev@example.com".to_string(),
+                "supradev@example.com".to_string(),
+            ],
             manifest_values: Some(manifest_values.into()),
         }
     }
@@ -107,6 +111,19 @@ impl Project {
             "selfservice:project:owner:{}",
             self.metadata.name.as_ref().unwrap()
         )
+    }
+
+    fn owners_as_subjects(&self) -> Vec<Subject> {
+        self.spec
+            .owners
+            .iter()
+            .map(|owner| Subject {
+                api_group: None,
+                kind: "User".to_string(),
+                name: owner.to_owned(),
+                namespace: None,
+            })
+            .collect()
     }
 
     pub fn rbac_manifests(
@@ -126,12 +143,7 @@ impl Project {
                 kind: "ClusterRole".to_string(),
                 name: default_owner_cluster_role.to_string(),
             },
-            subjects: Some(vec![Subject {
-                api_group: None,
-                kind: "User".to_string(),
-                name: self.spec.owner.clone(),
-                namespace: None,
-            }]),
+            subjects: Some(self.owners_as_subjects()),
         };
 
         let owner_cluster_role = ClusterRole {
@@ -169,12 +181,7 @@ impl Project {
                 kind: ClusterRole::kind(&()).to_string(),
                 name: self.owner_cluster_role_name(),
             },
-            subjects: Some(vec![Subject {
-                api_group: None,
-                kind: "User".to_string(),
-                name: self.spec.owner.clone(),
-                namespace: None,
-            }]),
+            subjects: Some(self.owners_as_subjects()),
         };
 
         (rolebinding, owner_cluster_role, owner_cluster_role_binding)
@@ -340,35 +347,36 @@ impl Project {
         let template =
             String::from_utf8(template.to_owned().0).unwrap_or_else(|_| String::from(""));
 
-        let values = format!(
-            "{}\n__PROJECT_NAME__: {}",
-            self.spec
-                .manifest_values
-                .as_ref()
-                .unwrap_or(&"".to_string()),
-            self.meta().name.as_ref().unwrap()
-        );
+        let mut template_data = match &self.spec.manifest_values {
+            Some(values) => {
+                match serde_yaml::from_str(values) {
+                    Ok(yaml) => {
+                        // check if this is _just_ a string -- this is accepted by the parser, but we can be kind of certain
+                        // that this is a wrong usage of manifestValues
+                        if let serde_yaml::Value::Mapping(mapping) = &yaml {
+                            mapping.to_owned()
+                        } else {
+                            let value_type = match &yaml {
+                                serde_yaml::Value::Number(_) => "a number",
+                                serde_yaml::Value::Null => "a null-value",
+                                serde_yaml::Value::Bool(_) => "a boolean",
+                                serde_yaml::Value::String(_) => "a string",
+                                serde_yaml::Value::Sequence(_) => "an array",
+                                _ => std::unreachable!()
+                            };
+                            bail!("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got {} with value '{}'",value_type, values)
+                        }
+                    },
+                    Err(e) => bail!("Invalid project spec: error parsing manifestValues which must be a string that represents a yaml mapping, got '{}':\n{}", values, e),
+                }
+            }
+            _ => Mapping::new(),
+        };
 
-        let template_data = match serde_yaml::from_str(&values) {
-                Ok(yaml) => {
-                    // check if this is _just_ a string -- this is accepted by the parser, but we can be kind of certain
-                    // that this is a wrong usage of manifestValues
-                    if let serde_yaml::Value::Mapping(mapping) = &yaml {
-                        mapping.to_owned()
-                    } else {
-                        let value_type = match &yaml {
-                            serde_yaml::Value::Number(_) => "a number",
-                            serde_yaml::Value::Null => "a null-value",
-                            serde_yaml::Value::Bool(_) => "a boolean",
-                            serde_yaml::Value::String(_) => "a string",
-                            serde_yaml::Value::Sequence(_) => "an array",
-                            _ => std::unreachable!()
-                        };
-                        bail!("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got {} with value '{}'",value_type, values)
-                    }
-                },
-                Err(e) => bail!("Invalid project spec: error parsing manifestValues which must be a string that represents a yaml mapping, got '{}':\n{}", values, e),
-            };
+        template_data.insert(
+            serde_yaml::to_value("__PROJECT_NAME__").unwrap(),
+            serde_yaml::to_value(self.metadata.name.as_ref().unwrap()).unwrap(),
+        );
 
         let mut reg = Handlebars::new();
         reg.set_strict_mode(true);

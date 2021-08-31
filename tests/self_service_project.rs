@@ -75,7 +75,7 @@ async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
     let mut project = api.get(&name).await?;
     let resource_version = project.resource_version();
     project.spec = ProjectSpec {
-        owner: "newowner@example.com".to_string(),
+        owners: vec!["newowner@example.com".to_string()],
         manifest_values: project.spec.manifest_values,
     };
     let meta = project.meta_mut();
@@ -205,7 +205,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
         "cluster role binding subject kind should be correct"
     );
     assert_eq!(
-        subject.name, project.spec.owner,
+        subject.name, project.spec.owners[0],
         "cluster role binding subject name should be correct"
     );
 
@@ -298,11 +298,18 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
         "owner rolebinding subject should exit"
     );
 
-    let subject = &rb.subjects.unwrap()[0];
+    let subject = &rb.subjects.as_ref().unwrap()[0];
     assert_eq!(
-        subject.name, project.spec.owner,
+        subject.name, project.spec.owners[0],
         "subject name should be correct"
     );
+
+    let subject1 = &rb.subjects.as_ref().unwrap()[1];
+    assert_eq!(
+        subject1.name, project.spec.owners[1],
+        "subject name should be correct"
+    );
+
     assert_eq!(
         subject.kind,
         "User".to_string(),
