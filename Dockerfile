@@ -13,10 +13,12 @@ ARG COMPRESSION_FACTOR="-1"
 
 ARG RUST_BUILDER_IMAGE=ekidd/rust-musl-builder:latest
 
-# sensible choices are scratch, busybox, alpine
-ARG RUNTIME_IMAGE=alpine
+# sensible choices are scratch, busybox (if you need a shell), alpine (if you need a shell + package manager)
+ARG RUNTIME_IMAGE=scratch
 
-ARG TARGET=x86_64-unknown-linux-musl
+#ARG TARGET=x86_64-unknown-linux-musl
+ARG TARGET=x86_64-unknown-linux-gnu
+
 ARG BIN=self-service-project-operator
 ARG ARTIFACT=target/${TARGET}/release/${BIN}
 
@@ -44,9 +46,23 @@ COPY --from=cacher /home/rust/.cargo /home/rust/.cargo
 COPY --from=cacher /app/target target
 COPY . .
 RUN cargo build --target="${TARGET}" --release --bin self-service-project-operator
-RUN echo "release                       : $(cd $(dirname ${ARTIFACT}); ls -lah $(basename ${ARTIFACT})|tr -s " "|cut -f5,9 -d" ")" >  /tmp/info
 RUN strip ${ARTIFACT}
-RUN echo "release stripped              : $(cd $(dirname ${ARTIFACT}); ls -lah $(basename ${ARTIFACT})|tr -s " "|cut -f5,9 -d" ")" >> /tmp/info
+
+# get all dynamic dependencies
+RUN bash -c "echo ${ARTIFACT} > /tmp/deps;\
+    while ! diff /tmp/deps /tmp/new_deps &>/dev/null; do \
+      mv -f /tmp/new_deps /tmp/deps 2>/dev/null;\
+      while read file; do \
+        echo \$file >> /tmp/new_deps_tmp;\
+        ldd \$file |grep '=>'   |grep '/'|tr -s ' \t' '\t'|cut -f4|sort|uniq >> /tmp/new_deps_tmp;\
+        ldd \$file |grep -v '=>'|grep '/'|tr -s ' \t' '\t'|cut -f2|sort|uniq >> /tmp/new_deps_tmp;\
+      done < /tmp/deps;\
+      cat /tmp/new_deps_tmp|sort|uniq|grep -v '^\$' > /tmp/new_deps;\
+    done;\
+    while read file; do\
+      (set -x; install -Ds \$file /tmp/buildroot/\${file});\
+    done < <(cat /tmp/deps|grep -v '${ARTIFACT}');\
+    touch /tmp/buildroot"
 
 ################################################### compressor stage (compress binary)
 FROM alpine as compressor
@@ -57,14 +73,14 @@ WORKDIR /app
 RUN apk add --no-cache upx
 COPY --from=builder /app/${ARTIFACT} /app/${ARTIFACT}
 RUN cd /app && ln -sf ${ARTIFACT} app
-COPY --from=builder --chmod=0777 /tmp/info /tmp
 RUN upx ${COMPRESSION_FACTOR} ${ARTIFACT}
-RUN echo -e "$(cat /tmp/info)\nrelease stripped & compressed : $(cd $(dirname ${ARTIFACT}); ls -lah $(basename ${ARTIFACT})|tr -s " "|cut -f5,9 -d" ")"
 
 ################################################### final stage (copy binary in run time image)
 FROM ${RUNTIME_IMAGE} as runtime
 ARG ARTIFACT
 ARG BIN
 
+COPY --from=builder /tmp/buildroot/ /
 COPY --from=compressor /app/${ARTIFACT} /project-operator
+COPY --from=compressor /etc/ssl /etc/ssl
 ENTRYPOINT ["/project-operator"]
