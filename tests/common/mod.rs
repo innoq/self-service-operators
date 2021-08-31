@@ -13,7 +13,7 @@ use noqnoqnoq::{
     project::{Project, ProjectOperator},
     self_service::{project, Sample},
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{convert::TryFrom, path::Path};
 use tokio::select;

@@ -340,15 +340,23 @@ impl Project {
         let template =
             String::from_utf8(template.to_owned().0).unwrap_or_else(|_| String::from(""));
 
-        let template_data: serde_yaml::Mapping = match &self.spec.manifest_values {
-            Some(manifest_values) => match serde_yaml::from_str(&manifest_values) {
-                Ok(value) => {
+        let values = format!(
+            "{}\n__PROJECT_NAME__: {}",
+            self.spec
+                .manifest_values
+                .as_ref()
+                .unwrap_or(&"".to_string()),
+            self.meta().name.as_ref().unwrap()
+        );
+
+        let template_data = match serde_yaml::from_str(&values) {
+                Ok(yaml) => {
                     // check if this is _just_ a string -- this is accepted by the parser, but we can be kind of certain
                     // that this is a wrong usage of manifestValues
-                    if let serde_yaml::Value::Mapping(mapping) = &value {
+                    if let serde_yaml::Value::Mapping(mapping) = &yaml {
                         mapping.to_owned()
                     } else {
-                        let value_type = match &value {
+                        let value_type = match &yaml {
                             serde_yaml::Value::Number(_) => "a number",
                             serde_yaml::Value::Null => "a null-value",
                             serde_yaml::Value::Bool(_) => "a boolean",
@@ -356,13 +364,11 @@ impl Project {
                             serde_yaml::Value::Sequence(_) => "an array",
                             _ => std::unreachable!()
                         };
-                        bail!("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got {} with value '{}'",value_type, manifest_values)
+                        bail!("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got {} with value '{}'",value_type, values)
                     }
                 },
-                Err(e) => bail!("Invalid project spec: error parsing manifestValues which must be a string that represents a yaml mapping, got '{}':\n{}", manifest_values, e),
-            },
-            None => serde_yaml::Mapping::new(),
-        };
+                Err(e) => bail!("Invalid project spec: error parsing manifestValues which must be a string that represents a yaml mapping, got '{}':\n{}", values, e),
+            };
 
         let mut reg = Handlebars::new();
         reg.set_strict_mode(true);

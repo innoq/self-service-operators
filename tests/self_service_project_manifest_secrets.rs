@@ -388,7 +388,7 @@ array:
     assert!(cm.data.is_some(), "config map should contain data");
     assert_eq!(
         cm.data.as_ref().unwrap().len(),
-        3,
+        4,
         "config map should three data items"
     );
 
@@ -405,6 +405,11 @@ array:
     assert_eq!(
         cm.data.as_ref().unwrap().get("arrayTwo"),
         Some(&"three".to_string()),
+        "mapped values should be correctly rendered"
+    );
+    assert_eq!(
+        cm.data.as_ref().unwrap().get("name"),
+        Some(&name),
         "mapped values should be correctly rendered"
     );
 

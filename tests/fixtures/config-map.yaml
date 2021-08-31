@@ -3,6 +3,7 @@ data:
   fooBarBaz: {{ foo.bar.baz }}
   arrayZero: {{ array.[0] }}
   arrayTwo: {{ array.[2] }}
+  name: {{ __PROJECT_NAME__ }}
 kind: ConfigMap
 metadata:
   creationTimestamp: null
