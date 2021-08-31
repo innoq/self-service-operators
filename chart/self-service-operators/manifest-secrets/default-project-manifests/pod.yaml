@@ -7,4 +7,4 @@ spec:
   containers:
     - name: foo
       image: alpine
-      command: ['sh', '-c', 'echo Hello Kubernetes! && tail -f /dev/null']
+      command: ['sh', '-c', 'echo {{ boom.foo }}! && tail -f /dev/null']

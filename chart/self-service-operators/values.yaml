@@ -1,6 +1,9 @@
 # install all necessary resources to get an admission controller -- this should be set to true
 installAdmissionController: false
 
+logVerbosity: info
+skipAdmissionControllerInstallation: false
+
 replicaCount: 1
 
 image:

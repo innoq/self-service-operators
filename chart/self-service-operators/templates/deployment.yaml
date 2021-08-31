@@ -33,7 +33,9 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          args: ["-vdebug"]
+          args:
+            - -v{{ .Values.logVerbosity|default "info" }}
+            {{ if .Values.skipAdmissionControllerInstallation }}- --skip-install-admission-controller-manifests{{ end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: https
