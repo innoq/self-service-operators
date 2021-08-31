@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .filter(Some("self_service_project_operator"), level)
         .init();
 
-    debug!("logging level set to 'debug' -- don't use this in production as it can pontentially leak sensible information");
+    debug!("logging level set to 'debug' -- don't use this in production as it can pontentially leak sensitive information");
 
     if opts.print_crd {
         println!(

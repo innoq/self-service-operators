@@ -1,7 +1,7 @@
 mod common;
 
 use crate::common::WaitForState;
-use k8s_openapi::api::core::v1::{Namespace, Pod, Secret};
+use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Pod, Secret};
 use kube::api::{ObjectMeta, PostParams};
 use noqnoqnoq::{
     helper,
@@ -9,7 +9,7 @@ use noqnoqnoq::{
     self_service::Sample,
 };
 use serial_test::serial;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::time::Duration;
 use tokio::select;
 use tokio::time;
@@ -202,11 +202,9 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     let name = common::random_name("copy-annotated-manifest");
     let timeout_secs = 20;
 
-    let mut manifest_values = HashMap::new();
-    manifest_values.insert("name".to_string(), "extra-pod".to_string());
-
+    let manifest_values = "name: extra-pod";
     let mut spec = project::ProjectSpec::sample();
-    spec.manifest_values = Some(manifest_values);
+    spec.manifest_values = Some(manifest_values.into());
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
@@ -274,11 +272,10 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
 
     let name = common::random_name("skip-annotated-manifest");
 
-    let mut manifest_values = HashMap::new();
-    manifest_values.insert("name".to_string(), "extra-pod".to_string());
+    let manifest_values = "- name: extra-pod";
 
     let mut spec = project::ProjectSpec::sample();
-    spec.manifest_values = Some(manifest_values);
+    spec.manifest_values = Some(manifest_values.into());
 
     let mut annotations = BTreeMap::new();
 
@@ -331,15 +328,24 @@ async fn it_should_eventually_install_manifests() -> anyhow::Result<()> {
         vec![
             include_str!("fixtures/pod-sa.yaml"),
             include_str!("fixtures/sa.yaml"),
+            include_str!("fixtures/config-map.yaml"),
         ],
     )
     .await?;
 
-    let mut manifest_values = HashMap::new();
-    manifest_values.insert("name".to_string(), "standard-pod".to_string());
+    let manifest_values = r#"
+name: standard-pod
+foo:
+    bar:
+        baz: boom!
+array:
+    - one
+    - two
+    - three
+"#;
 
     let mut spec = project::ProjectSpec::sample();
-    spec.manifest_values = Some(manifest_values);
+    spec.manifest_values = Some(manifest_values.into());
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
@@ -357,8 +363,8 @@ async fn it_should_eventually_install_manifests() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let project_api: kube::Api<project::Project> = kube::Api::all(client.clone());
-    let _ = project_api.create(&PostParams::default(), &project).await;
+    let api: kube::Api<project::Project> = kube::Api::all(client.clone());
+    let _ = api.create(&PostParams::default(), &project).await;
 
     let wait_for_pod_created_handle = common::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
@@ -376,11 +382,30 @@ async fn it_should_eventually_install_manifests() -> anyhow::Result<()> {
         timeout_secs
     );
 
-    assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
-            .await
-            .is_ok(),
-        "project should be in waiting state"
+    let api: kube::Api<ConfigMap> = kube::Api::namespaced(client.clone(), &name);
+    let cm = api.get("test").await?;
+
+    assert!(cm.data.is_some(), "config map should contain data");
+    assert_eq!(
+        cm.data.as_ref().unwrap().len(),
+        3,
+        "config map should three data items"
+    );
+
+    assert_eq!(
+        cm.data.as_ref().unwrap().get("fooBarBaz"),
+        Some(&"boom!".to_string()),
+        "mapped values should be correctly rendered"
+    );
+    assert_eq!(
+        cm.data.as_ref().unwrap().get("arrayZero"),
+        Some(&"one".to_string()),
+        "mapped values should be correctly rendered"
+    );
+    assert_eq!(
+        cm.data.as_ref().unwrap().get("arrayTwo"),
+        Some(&"three".to_string()),
+        "mapped values should be correctly rendered"
     );
 
     assert!(
@@ -407,11 +432,10 @@ async fn it_fails_with_correct_error_state_when_invalid_manifests_are_used() -> 
     )
     .await?;
 
-    let mut manifest_values = HashMap::new();
-    manifest_values.insert("name".to_string(), "standard-pod".to_string());
+    let manifest_values = "name: standard-pod";
 
     let mut spec = project::ProjectSpec::sample();
-    spec.manifest_values = Some(manifest_values);
+    spec.manifest_values = Some(manifest_values.into());
 
     let mut annotations = BTreeMap::new();
     annotations.insert(

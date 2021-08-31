@@ -317,11 +317,10 @@ pub async fn install_project(
     let wait_for_project_created_handle =
         wait_for_state(&project_api, &name, WaitForState::Created);
 
-    let mut manifest_values = HashMap::new();
-    manifest_values.insert("name".to_string(), "templated-name".to_string());
+    let manifest_values = "name: templated-name";
 
     let mut spec = project::ProjectSpec::sample();
-    spec.manifest_values = Some(manifest_values);
+    spec.manifest_values = Some(manifest_values.into());
 
     let project = project::Project::new(name.as_str(), spec);
 

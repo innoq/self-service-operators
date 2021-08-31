@@ -134,7 +134,7 @@ async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyh
 
 #[tokio::test]
 #[serial]
-async fn it_should_fail_if_tempalte_vals_are_misssing() -> anyhow::Result<()> {
+async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
     let (client, operator) = common::before_each().await?;
 
     common::apply_manifest_secret(
@@ -158,7 +158,94 @@ async fn it_should_fail_if_tempalte_vals_are_misssing() -> anyhow::Result<()> {
             );
             assert_eq!(status.status, Some("Failure".to_string()));
         }
-        _ => panic!("admission hook did not fail even a manifest value was missing"),
+        _ => panic!("admission hook did not fail even though a manifest value was missing"),
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Result<()> {
+    let (client, operator) = common::before_each().await?;
+
+    common::apply_manifest_secret(
+        &client,
+        project::DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("fixtures/pod.yaml")],
+    )
+    .await?;
+
+    let name = common::random_name("missing-template-val");
+    let mut project = Project::new(&name, Default::default());
+    project.spec.manifest_values = Some("foo: -".into());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(status.message, Some("Invalid project spec: error parsing manifestValues which must be a string that represents a yaml mapping, got 'foo: -':\nblock sequence entries are not allowed in this context at line 1 column 6".to_string()));
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => panic!("admission hook did not fail even though manifestValues was invalid"),
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_fail_if_manifest_values_is_just_a_simple_string() -> anyhow::Result<()> {
+    let (client, operator) = common::before_each().await?;
+
+    common::apply_manifest_secret(
+        &client,
+        project::DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("fixtures/pod.yaml")],
+    )
+    .await?;
+
+    let name = common::random_name("missing-template-val");
+    let mut project = Project::new(&name, Default::default());
+    project.spec.manifest_values = Some("baaam".into());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(status.message, Some("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got a string with value 'baaam'".into()));
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => panic!("admission hook did not fail even though manifestValues was invalid"),
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_fail_if_manifest_values_is_an_array() -> anyhow::Result<()> {
+    let (client, operator) = common::before_each().await?;
+
+    common::apply_manifest_secret(
+        &client,
+        project::DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("fixtures/pod.yaml")],
+    )
+    .await?;
+
+    let name = common::random_name("missing-template-val");
+    let mut project = Project::new(&name, Default::default());
+    project.spec.manifest_values = Some("[1,2]".into());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(status.message, Some("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got an array with value '[1,2]'".into()));
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => panic!("admission hook did not fail even though manifestValues was invalid"),
     }
     Ok(())
 }

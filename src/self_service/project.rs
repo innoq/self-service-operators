@@ -28,7 +28,7 @@ use krator_derive::AdmissionWebhook;
 use kube::api::{ListParams, ObjectMeta, PostParams, WatchEvent};
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
@@ -76,7 +76,7 @@ pub struct ProjectSpec {
     pub owner: String,
 
     /// a map of values that should be templated into manifests that get created
-    pub manifest_values: Option<HashMap<String, String>>,
+    pub manifest_values: Option<String>,
 }
 
 // TODO: this is just for nicer test output ...
@@ -89,18 +89,14 @@ impl k8s_openapi::Resource for Project {
 
 impl Sample for ProjectSpec {
     fn sample() -> Self {
-        let mut manifest_values = HashMap::new();
-        manifest_values.insert(
-            "project_repo".to_string(),
-            "github.com/innoq/noqnoqnoq".to_string(),
-        );
-        manifest_values.insert(
-            "project_name".to_string(),
-            "self-service-project".to_string(),
-        );
+        let manifest_values = r#"
+project_repo: github.com/innoq/noqnoqnoq
+project_name: self-service-project
+"#;
+
         ProjectSpec {
             owner: "superdev@example.com".to_string(),
-            manifest_values: Some(manifest_values),
+            manifest_values: Some(manifest_values.into()),
         }
     }
 }
@@ -344,16 +340,35 @@ impl Project {
         let template =
             String::from_utf8(template.to_owned().0).unwrap_or_else(|_| String::from(""));
 
-        let manifest_values = match &self.spec.manifest_values {
-            Some(manifest_values) => manifest_values.to_owned(),
-            None => HashMap::new(),
+        let template_data: serde_yaml::Mapping = match &self.spec.manifest_values {
+            Some(manifest_values) => match serde_yaml::from_str(&manifest_values) {
+                Ok(value) => {
+                    // check if this is _just_ a string -- this is accepted by the parser, but we can be kind of certain
+                    // that this is a wrong usage of manifestValues
+                    if let serde_yaml::Value::Mapping(mapping) = &value {
+                        mapping.to_owned()
+                    } else {
+                        let value_type = match &value {
+                            serde_yaml::Value::Number(_) => "a number",
+                            serde_yaml::Value::Null => "a null-value",
+                            serde_yaml::Value::Bool(_) => "a boolean",
+                            serde_yaml::Value::String(_) => "a string",
+                            serde_yaml::Value::Sequence(_) => "an array",
+                            _ => std::unreachable!()
+                        };
+                        bail!("Invalid project spec: property manifestValues must be a string that represents a yaml mapping, got {} with value '{}'",value_type, manifest_values)
+                    }
+                },
+                Err(e) => bail!("Invalid project spec: error parsing manifestValues which must be a string that represents a yaml mapping, got '{}':\n{}", manifest_values, e),
+            },
+            None => serde_yaml::Mapping::new(),
         };
 
         let mut reg = Handlebars::new();
         reg.set_strict_mode(true);
         reg.register_template_string(name, &template)?;
 
-        match reg.render(name, &manifest_values) {
+        match reg.render(name, &template_data) {
             Ok(manifest) => Ok(manifest),
             Err(e) => bail!(
                 "{} (did you provide all necessary manifestValues in the project spec?)",
@@ -954,6 +969,8 @@ impl Operator for ProjectOperator {
         let client = shared.client.clone();
         let default_namespace = shared.default_ns.clone();
         let project_name = project.metadata.name.as_ref().expect("");
+
+        debug!("admission hook: {:?}", project);
 
         let deny = |msg: String| {
             AdmissionResult::Deny(Status {
