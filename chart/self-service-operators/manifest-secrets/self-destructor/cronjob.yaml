@@ -1,0 +1,24 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: self-descruct
+spec:
+  jobTemplate:
+    metadata:
+      name: self-descruct
+    spec:
+      template:
+        spec:
+          serviceAccountName: self-destructor
+          containers:
+          - image: alpine
+            name: self-descruct
+            command:
+              - sh
+              - -c
+              - |
+                apk add curl
+                curl -k -X DELETE -H"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/apis/selfservice.innoq.io/v1/projects/{{ __PROJECT_NAME__ }}
+          restartPolicy: OnFailure
+  schedule: '{{ selfDestructAt }}'
+status: {}
