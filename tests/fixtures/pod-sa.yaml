@@ -4,6 +4,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: pod-sa
+  namespace: {{ __PROJECT_NAME }}
   annotations:
   labels:
     app: pod-sa

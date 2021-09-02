@@ -9,3 +9,4 @@ kind: ConfigMap
 metadata:
   creationTimestamp: null
   name: test
+  namespace: {{ __PROJECT_NAME }}

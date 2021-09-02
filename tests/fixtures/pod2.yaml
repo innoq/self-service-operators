@@ -3,6 +3,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: bar
+  namespace: {{ __PROJECT_NAME__ }}
 spec:
   containers:
     - name: bar

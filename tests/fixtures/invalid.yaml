@@ -4,6 +4,7 @@ apiVersion: v1
 kind: INVALID
 metadata:
   name: foo
+  namespace: {{ __PROJECT_NAME }}
 spec:
   containers:
     - name: foo

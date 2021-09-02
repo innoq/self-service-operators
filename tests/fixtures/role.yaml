@@ -3,6 +3,7 @@ kind: Role
 metadata:
   creationTimestamp: null
   name: podreader
+  namespace: xxx
 rules:
 - apiGroups:
   - ""

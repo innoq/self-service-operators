@@ -135,6 +135,7 @@ impl Project {
         let rolebinding = RoleBinding {
             metadata: ObjectMeta {
                 name: Some(owner_role_binding_name),
+                namespace: self.metadata.name.clone(),
                 owner_references: Some(vec![OwnerReference::from(self)]),
                 ..Default::default()
             },
@@ -343,7 +344,7 @@ impl Project {
         Ok(manifest_yaml_sources)
     }
 
-    fn render(&self, template: &ByteString, name: &str) -> anyhow::Result<String> {
+    pub fn render(&self, template: &ByteString, name: &str) -> anyhow::Result<String> {
         let template =
             String::from_utf8(template.to_owned().0).unwrap_or_else(|_| String::from(""));
 
@@ -678,7 +679,7 @@ impl State<ProjectState> for SetupRBACPermissions {
         ]
         .iter()
         {
-            if let Err(e) = helper::apply_yaml_manifest(&client, &manifest, &project, false).await {
+            if let Err(e) = helper::apply_yaml_manifest(&client, &manifest, &project).await {
                 state.error = format!("error applying {}: {}", name, e);
 
                 return Transition::next(self, Error);
@@ -743,7 +744,7 @@ impl State<ProjectState> for ApplyManifests {
                 let max_retries = 5;
                 while let Some((i, manifest)) = manifests.pop() {
                     if let Err(e) =
-                        helper::apply_yaml_manifest(&shared.client, &manifest, &project, true).await
+                        helper::apply_yaml_manifest(&shared.client, &manifest, &project).await
                     {
                         if i >= max_retries {
                             state.error = format!(

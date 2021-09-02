@@ -99,9 +99,15 @@ install_ingress_controller() {   # installs and sets up ingress controller
   kubectl patch deployments -n ingress-nginx ingress-nginx-controller -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"controller\",\"ports\":[{\"containerPort\":80,\"hostPort\":80},{\"containerPort\":443,\"hostPort\":443}]}],\"nodeSelector\":{\"ingress-ready\":\"true\"},\"tolerations\":[{\"key\":\"node-role.kubernetes.io/master\",\"operator\":\"Equal\",\"effect\":\"NoSchedule\"}]}}}}"
 }
 
+install_argocd() {              # installs argocd
+  kubectl create namespace argocd
+  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+}
+
 setup_cluster_and_install_apps() {
   launch_kind_cluster
   install_ingress_controller
+  install_argocd
   watch kubectl get pods -A
 }
 

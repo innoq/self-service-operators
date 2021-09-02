@@ -69,7 +69,7 @@ pub async fn get_manifests_secret(
         secret_name,
         crate::project::SECRET_ANNOTATION_KEY,
         crate::project::SECRET_ANNOTATION_VALUE
-    );
+        );
 
     Ok(secret)
 }
@@ -126,20 +126,13 @@ pub async fn apply_yaml_manifest(
     client: &kube::Client,
     yaml_manifest: &str,
     project: &Project,
-    project_manifest: bool,
 ) -> anyhow::Result<()> {
-    let resource_path = resource_path(
-        &client,
-        yaml_manifest,
-        &project.metadata.name.as_ref().unwrap(),
-        project_manifest,
-    )
-    .await?;
+    let path = resource_path(&client, yaml_manifest).await?;
 
     let manifest = add_owner_to_yaml_manifest(yaml_manifest, &project)?;
 
     let get_request = Request::builder()
-        .uri(&resource_path)
+        .uri(&path)
         .method("GET")
         .body("".into())
         .unwrap();
@@ -149,18 +142,18 @@ pub async fn apply_yaml_manifest(
         request = Request::builder()
             .uri(format!(
                 "{}?fieldManager=self-service-operator&force=true",
-                &resource_path
+                &path
             ))
             .method("PATCH")
             .header("Content-Type", "application/apply-patch+yaml")
             .body(manifest.into())
             .unwrap();
     } else {
-        let resource_path = Path::new(&resource_path).parent().unwrap();
+        let path = Path::new(&path).parent().unwrap();
         request = Request::builder()
             .uri(format!(
                 "{}?fieldManager=self-service-operator&force=true",
-                &resource_path.display().to_string()
+                &path.display().to_string()
             ))
             .method("POST")
             .header("Content-Type", "application/yaml")
@@ -174,12 +167,7 @@ pub async fn apply_yaml_manifest(
     }
 }
 
-pub async fn resource_path(
-    client: &kube::Client,
-    yaml_manifest: &str,
-    namespace: &str,
-    project_manifest: bool,
-) -> anyhow::Result<String> {
+pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow::Result<String> {
     let resource_info: ResourceInfo = serde_yaml::from_str(yaml_manifest)?;
 
     let is_core_api_resource = !resource_info.api_version.contains('/');
@@ -205,27 +193,16 @@ pub async fn resource_path(
             )
         })?;
 
-    if project_manifest {
+    let namespace_specifier = if resource.namespaced {
         ensure!(
-            resource.namespaced,
-            "only namespaced resources are supported: {}/{} with name '{}' is a cluster resource",
-            resource_info.api_version,
-            resource_info.kind,
-            resource_info.metadata.name.unwrap()
-        );
-
-        ensure!(
-            resource_info.metadata.namespace.is_none(),
-            "setting namespace forbidden: resource {}/{} with name '{}' has namespace set explicitly to '{}'",
+            resource_info.metadata.namespace.is_some(),
+            "setting namespace is required: resource {}/{} with name '{}' has no namespace set ... in most cases you want to set it to {{{{ __PROJECT_NAME__ }}}}\nManifest is: {}",
             resource_info.api_version,
             resource_info.kind,
             resource_info.metadata.name.unwrap(),
-            resource_info.metadata.namespace.unwrap()
-        );
-    }
+            yaml_manifest);
 
-    let namespace_specifier = if resource.namespaced {
-        format!("namespaces/{}/", namespace)
+        format!("namespaces/{}/", resource_info.metadata.namespace.unwrap())
     } else {
         "".to_string()
     };
