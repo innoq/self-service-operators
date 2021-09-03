@@ -5,12 +5,12 @@ use krator::{Manifest, State, Transition};
 use kube::Resource;
 use tokio::sync::RwLock;
 
-use crate::self_service::project::Project;
-use crate::self_service::project::ProjectStatus;
-use crate::self_service::states::error::Error;
-use crate::self_service::states::{
+use crate::self_service::project::states::error::Error;
+use crate::self_service::project::states::{
     apply_manifests, ApplyManifests, ProjectPhase, ProjectState, SharedState,
 };
+use crate::self_service::project::Project;
+use crate::self_service::project::ProjectStatus;
 
 #[derive(Debug, Default)]
 /// Project is sleeping.

@@ -12,7 +12,9 @@ pub(crate) use released::Released;
 pub(crate) use setup_rbac_permissions::SetupRBACPermissions;
 pub(crate) use wait_for_changes::WaitForChanges;
 
-use crate::self_service::project::{Project, ProjectSpec, ProjectStatus, DEFAULT_MANIFESTS_SECRET};
+pub use crate::self_service::project::{
+    project::DEFAULT_MANIFESTS_SECRET, Project, ProjectSpec, ProjectStatus,
+};
 
 pub mod apply_manifests;
 mod create_namespace;

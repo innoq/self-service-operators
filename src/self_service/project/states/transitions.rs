@@ -1,6 +1,6 @@
 use krator::TransitionTo;
 
-use crate::self_service::states::{
+use crate::self_service::project::states::{
     ApplyManifests, CreateNamespace, Error, SetupRBACPermissions, WaitForChanges,
 };
 

@@ -18,9 +18,11 @@ use tokio::select;
 use tokio::task::JoinHandle;
 use tokio::time;
 
-use noqnoqnoq::self_service::operator;
-use noqnoqnoq::self_service::operator::ProjectOperator;
-use noqnoqnoq::self_service::project;
+use noqnoqnoq::self_service::project::operator;
+use noqnoqnoq::self_service::project::operator::ProjectOperator;
+use noqnoqnoq::self_service::project::project::{
+    DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
+};
 use noqnoqnoq::self_service::project::Project;
 use noqnoqnoq::self_service::project::ProjectSpec;
 use noqnoqnoq::self_service::project::Sample;
@@ -31,7 +33,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     assert!(
         apply_manifest_secret(
             &client,
-            project::DEFAULT_MANIFESTS_SECRET,
+            DEFAULT_MANIFESTS_SECRET,
             vec![include_str!("../fixtures/pod.yaml")]
         )
         .await
@@ -46,7 +48,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
         client.clone(),
         "admin",
         "default",
-        project::DEFAULT_MANIFESTS_SECRET,
+        DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(1),
     )
     .await
@@ -101,8 +103,8 @@ pub async fn apply_manifest_secret(
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
-        project::SECRET_ANNOTATION_KEY.to_string(),
-        project::SECRET_ANNOTATION_VALUE.to_string(),
+        SECRET_ANNOTATION_KEY.to_string(),
+        SECRET_ANNOTATION_VALUE.to_string(),
     );
 
     let mut secret_items = BTreeMap::new();

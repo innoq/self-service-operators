@@ -6,11 +6,11 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use noqnoqnoq::self_service::project;
 use noqnoqnoq::self_service::project::Project;
 
 use crate::common;
 use crate::common::WaitForState;
+use noqnoqnoq::self_service::project::project::OWNER_ROLE_BINDING_NAME;
 
 #[tokio::test]
 #[serial]
@@ -148,7 +148,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
     let wait_for_rolebinding_created_handle = common::wait_for_state(
         &api,
-        &project::OWNER_ROLE_BINDING_NAME.to_string(),
+        &OWNER_ROLE_BINDING_NAME.to_string(),
         WaitForState::Created,
     );
 
@@ -161,7 +161,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
         timeout_secs
     );
 
-    let rb = api.get(&project::OWNER_ROLE_BINDING_NAME).await?;
+    let rb = api.get(&OWNER_ROLE_BINDING_NAME).await?;
 
     assert!(
         common::assert_is_owned_by_project(&project, &rb).is_ok(),
@@ -170,7 +170,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
 
     assert_eq!(
         rb.metadata.name.unwrap(),
-        project::OWNER_ROLE_BINDING_NAME,
+        OWNER_ROLE_BINDING_NAME,
         "owner rolebinding name should be correct"
     );
     assert!(

@@ -7,13 +7,13 @@ use anyhow::Context;
 use http::Request;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
 use krator::{Manifest, State, Transition};
+use serde::Deserialize;
 use tokio::sync::RwLock;
 
+use crate::self_service::project::states::{Error, SharedState};
+use crate::self_service::project::states::{ProjectPhase, ProjectState, WaitForChanges};
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
-use crate::self_service::states::{Error, SharedState};
-use crate::self_service::states::{ProjectPhase, ProjectState, WaitForChanges};
-use serde::Deserialize;
 
 #[derive(Debug, Default)]
 pub(crate) struct ApplyManifests;

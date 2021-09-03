@@ -5,7 +5,10 @@ use core::result::Result::Ok;
 use krator::admission::AdmissionResult;
 use krator::Operator;
 use kube::Resource;
-use noqnoqnoq::self_service::project;
+
+use noqnoqnoq::self_service::project::project::{
+    COPY_ANNOTATION_BASE, COPY_ANNOTATION_COPY_VALUE, DEFAULT_MANIFESTS_SECRET,
+};
 use noqnoqnoq::self_service::project::Project;
 use serial_test::serial;
 use std::collections::BTreeMap;
@@ -71,8 +74,8 @@ async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> 
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
-        format!("{}/i-dont-exist.foo", project::COPY_ANNOTATION_BASE),
-        project::COPY_ANNOTATION_COPY_VALUE.to_string(),
+        format!("{}/i-dont-exist.foo", COPY_ANNOTATION_BASE),
+        COPY_ANNOTATION_COPY_VALUE.to_string(),
     );
     meta_data.annotations = Some(annotations);
 
@@ -107,12 +110,8 @@ async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyh
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
-        format!(
-            "{}/{}.foo",
-            project::COPY_ANNOTATION_BASE,
-            project::DEFAULT_MANIFESTS_SECRET
-        ),
-        project::COPY_ANNOTATION_COPY_VALUE.to_string(),
+        format!("{}/{}.foo", COPY_ANNOTATION_BASE, DEFAULT_MANIFESTS_SECRET),
+        COPY_ANNOTATION_COPY_VALUE.to_string(),
     );
     meta_data.annotations = Some(annotations);
 
@@ -123,7 +122,7 @@ async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyh
             assert_eq!(status.code, Some(409));
             assert_eq!(
                 status.message,
-                Some(format!("annotation 'project.selfservice.innoq.io/{}.foo: copy' not possible: secret '{}' does not contain a data item named 'foo'", project::DEFAULT_MANIFESTS_SECRET, project::DEFAULT_MANIFESTS_SECRET))
+                Some(format!("annotation 'project.selfservice.innoq.io/{}.foo: copy' not possible: secret '{}' does not contain a data item named 'foo'", DEFAULT_MANIFESTS_SECRET, DEFAULT_MANIFESTS_SECRET))
             );
             assert_eq!(status.status, Some("Failure".to_string()));
         }
@@ -142,8 +141,8 @@ async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
 
     common::apply_manifest_secret(
         &client,
-        project::DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../fixtures/templated-pod.yaml")],
+        DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("../../fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -173,8 +172,8 @@ async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Res
 
     common::apply_manifest_secret(
         &client,
-        project::DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../fixtures/pod.yaml")],
+        DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("../../fixtures/pod.yaml")],
     )
     .await?;
 
@@ -202,8 +201,8 @@ async fn it_should_fail_if_manifest_values_is_just_a_simple_string() -> anyhow::
 
     common::apply_manifest_secret(
         &client,
-        project::DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../fixtures/pod.yaml")],
+        DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("../../fixtures/pod.yaml")],
     )
     .await?;
 
@@ -231,8 +230,8 @@ async fn it_should_fail_if_manifest_values_is_an_array() -> anyhow::Result<()> {
 
     common::apply_manifest_secret(
         &client,
-        project::DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../fixtures/pod.yaml")],
+        DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("../../fixtures/pod.yaml")],
     )
     .await?;
 

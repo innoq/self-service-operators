@@ -26,9 +26,9 @@ async fn it_should_eventually_install_correctly_rendered_manifests() -> anyhow::
         &client,
         "extra-manifests",
         vec![
-            include_str!("../../fixtures/pod-sa.yaml"),
-            include_str!("../../fixtures/sa.yaml"),
-            include_str!("../../fixtures/config-map.yaml"),
+            include_str!("../../../fixtures/pod-sa.yaml"),
+            include_str!("../../../fixtures/sa.yaml"),
+            include_str!("../../../fixtures/config-map.yaml"),
         ],
     )
     .await?;

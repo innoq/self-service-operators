@@ -13,9 +13,10 @@ use krator::{Manifest, Operator};
 use kube::{Api, Resource};
 use tokio::sync::RwLock;
 
+use crate::self_service::project::project::{SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE};
+use crate::self_service::project::states::{CreateNamespace, ProjectState, Released, SharedState};
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
-use crate::self_service::states::{CreateNamespace, ProjectState, Released, SharedState};
 
 #[derive(Clone)]
 pub struct ProjectOperator {
@@ -188,16 +189,14 @@ pub async fn get_manifests_secret(
         .metadata
         .annotations
         .as_ref()
-        .and_then(|annotations| {
-            annotations.get(crate::self_service::project::SECRET_ANNOTATION_KEY)
-        });
+        .and_then(|annotations| annotations.get(SECRET_ANNOTATION_KEY));
 
     ensure!(
-        annotation.is_some() && annotation.unwrap() == crate::self_service::project::SECRET_ANNOTATION_VALUE,
+        annotation.is_some() && annotation.unwrap() == SECRET_ANNOTATION_VALUE,
         "Error accessing secret '{}': only secrets with the annotation '{}: {}' can be accessed by the project operator",
         secret_name,
-        crate::self_service::project::SECRET_ANNOTATION_KEY,
-        crate::self_service::project::SECRET_ANNOTATION_VALUE
+        SECRET_ANNOTATION_KEY,
+        SECRET_ANNOTATION_VALUE
         );
 
     Ok(secret)

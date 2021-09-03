@@ -19,7 +19,7 @@ spec:
           jsonPath: ".spec.owner"
           name: Owner
           type: string
-        - description: "whether the projects's namespace is private"
+        - description: "whether the project's namespace is private"
           jsonPath: ".spec.private"
           name: Private
           type: string

@@ -20,7 +20,7 @@ async fn it_fails_with_correct_error_state_when_invalid_manifests_are_used() -> 
     common::apply_manifest_secret(
         &client,
         "extra-manifests",
-        vec![include_str!("../../fixtures/invalid.yaml")],
+        vec![include_str!("../../../fixtures/invalid.yaml")],
     )
     .await?;
 

@@ -8,12 +8,14 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use noqnoqnoq::self_service::project::Sample;
+use noqnoqnoq::self_service::project::{operator, Sample};
 use noqnoqnoq::self_service::project::{Project, ProjectSpec};
-use noqnoqnoq::self_service::{operator, project};
 
 use crate::common;
 use crate::common::WaitForState;
+use noqnoqnoq::self_service::project::project::{
+    DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
+};
 
 #[tokio::test]
 #[serial]
@@ -41,8 +43,8 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
 
     let mut annotations = BTreeMap::new();
     annotations.insert(
-        project::SECRET_ANNOTATION_KEY.to_string(),
-        project::SECRET_ANNOTATION_VALUE.to_string(),
+        SECRET_ANNOTATION_KEY.to_string(),
+        SECRET_ANNOTATION_VALUE.to_string(),
     );
     let _annotated_secret = api
         .create(
@@ -68,9 +70,9 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     assert_eq!(
 		resources.unwrap_err().to_string(),
 		format!(
-			"Error accessing secret 'standard-secret': only secrets with the annotation '{}: {}' can be accessed by the project operator",
-			project::SECRET_ANNOTATION_KEY,
-			project::SECRET_ANNOTATION_VALUE
+            "Error accessing secret 'standard-secret': only secrets with the annotation '{}: {}' can be accessed by the project operator",
+            SECRET_ANNOTATION_KEY,
+            SECRET_ANNOTATION_VALUE
 		)
 	);
 
@@ -128,8 +130,8 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
     let (client, _operator) = common::before_each().await?;
     common::apply_manifest_secret(
         &client,
-        project::DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../fixtures/templated-pod.yaml")],
+        DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("../../fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -170,7 +172,7 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     common::apply_manifest_secret(
         &client,
         "extra-manifests",
-        vec![include_str!("../fixtures/templated-pod.yaml")],
+        vec![include_str!("../../fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -241,7 +243,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     common::apply_manifest_secret(
         &client,
         "extra-manifests",
-        vec![include_str!("../fixtures/templated-pod.yaml")],
+        vec![include_str!("../../fixtures/templated-pod.yaml")],
     )
     .await?;
 
@@ -280,7 +282,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     };
 
     let manifests = project
-        .associated_manifests(&client, project::DEFAULT_MANIFESTS_SECRET, "default")
+        .associated_manifests(&client, DEFAULT_MANIFESTS_SECRET, "default")
         .await?;
 
     // println!("{}", manifests[0]);

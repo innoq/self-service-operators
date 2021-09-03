@@ -3,12 +3,12 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: projects.selfservice.innoq.io
+  name: project.selfservice.innoq.io
 spec:
   group: selfservice.innoq.io
   names:
     kind: Project
-    plural: projects
+    plural: project
     shortNames:
       - ssp
     singular: project
@@ -19,7 +19,7 @@ spec:
           jsonPath: ".spec.owner"
           name: Owner
           type: string
-        - description: "whether the projects's namespace is private"
+        - description: "whether the project's namespace is private"
           jsonPath: ".spec.private"
           name: Private
           type: string

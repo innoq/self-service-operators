@@ -18,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app: projects-selfservice-innoq-io-operator
+        app: project-selfservice-innoq-io-operator
         {{- include "self-service-operators.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}

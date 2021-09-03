@@ -2,10 +2,12 @@ use std::time::Duration;
 
 use serial_test::serial;
 
-use noqnoqnoq::self_service::operator;
-use noqnoqnoq::self_service::project;
+use noqnoqnoq::self_service::project::operator;
 
 use crate::common;
+use noqnoqnoq::self_service::project::project::{
+    DEFAULT_MANIFESTS_SECRET, OWNER_ROLE_BINDING_NAME,
+};
 
 #[tokio::test]
 #[serial]
@@ -14,7 +16,7 @@ async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result
 
     match operator::ProjectOperator::new(
 		client.clone(),
-		project::OWNER_ROLE_BINDING_NAME,
+		OWNER_ROLE_BINDING_NAME,
 		"default",
 		"non-existant-secret",
         Duration::from_secs(0)
@@ -41,8 +43,8 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
     assert!(
         common::apply_manifest_secret(
             &client,
-            project::DEFAULT_MANIFESTS_SECRET,
-            vec![include_str!("../fixtures/pod.yaml")]
+            DEFAULT_MANIFESTS_SECRET,
+            vec![include_str!("../../fixtures/pod.yaml")]
         )
         .await
         .is_ok(),
@@ -53,7 +55,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
         client.clone(),
         "non-existant-cluster-role-name",
         "default",
-        project::DEFAULT_MANIFESTS_SECRET,
+        DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(0),
     )
     .await

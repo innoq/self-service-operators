@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
 use crate::self_service;
-use crate::self_service::states::ProjectPhase;
+use crate::self_service::project::states::ProjectPhase;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
@@ -55,7 +55,7 @@ pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
     shortname = "ssp",
     printcolumn = r#"
      {"name":"Owner", "type":"string", "description":"owner of this project", "jsonPath":".spec.owner"},
-     {"name":"Private", "type":"string", "description":"whether the projects's namespace is private", "jsonPath":".spec.private"},
+     {"name":"Private", "type":"string", "description":"whether the project's namespace is private", "jsonPath":".spec.private"},
      {"name":"Age", "type":"date", "description":"how old this resource is", "jsonPath":".metadata.creationTimestamp"},
      {"name":"Phase", "type":"string", "description":"current phase of this resource", "jsonPath":".status.phase"},
      {"name":"Status summary", "type":"string", "description":"current status", "jsonPath":".status.summary"}
@@ -191,7 +191,7 @@ impl Project {
     //
     // project.selfservice.innoq.io/default-project-manifests: copy
     //
-    // for all projects
+    // for all project
     pub async fn associated_manifests(
         &self,
         client: &Client,
@@ -466,7 +466,7 @@ impl ObjectStatus for ProjectStatus {
     fn failed(e: &str) -> ProjectStatus {
         let message = format!("error: {}", e);
         ProjectStatus {
-            summary: Some(self_service::shorten_string(&message)),
+            summary: Some(self_service::project::shorten_string(&message)),
             message: Some(message),
             phase: None,
         }

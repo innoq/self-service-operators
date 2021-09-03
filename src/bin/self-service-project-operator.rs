@@ -11,8 +11,8 @@ use krator::OperatorRuntime;
 use log::LevelFilter;
 pub use schemars::JsonSchema;
 
-use noqnoqnoq::self_service::operator;
-use noqnoqnoq::self_service::project;
+use noqnoqnoq::self_service::project::operator;
+use noqnoqnoq::self_service::project::project::DEFAULT_MANIFESTS_SECRET;
 use noqnoqnoq::self_service::project::Project;
 use noqnoqnoq::self_service::project::Sample;
 
@@ -131,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
         client,
         &opts.default_owner_cluster_role,
         &namespace,
-        crate::project::DEFAULT_MANIFESTS_SECRET,
+        DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(5),
     )
     .await?;
