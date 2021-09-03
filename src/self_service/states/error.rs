@@ -3,7 +3,7 @@ use std::sync::Arc;
 use krator::{Manifest, State, Transition};
 use tokio::sync::RwLock;
 
-use crate::self_service::helper;
+use crate::self_service;
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
 use crate::self_service::states::{ProjectPhase, ProjectState, SharedState};
@@ -36,7 +36,7 @@ impl State<ProjectState> for Error {
         let message = format!("error: {}", state.error);
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::FailedDueToError),
-            summary: Some(helper::shorten_string(&message)),
+            summary: Some(self_service::shorten_string(&message)),
             message: Some(message),
         })
     }

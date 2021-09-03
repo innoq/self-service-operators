@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::ensure;
 use anyhow::Context;
 use k8s_openapi::api::core::v1::{Namespace, Secret};
 use k8s_openapi::api::rbac::v1::ClusterRole;
@@ -37,13 +38,7 @@ impl ProjectOperator {
             manifest_retry_delay,
         }));
 
-        if let Err(e) = crate::self_service::helper::get_manifests_secret(
-            &client,
-            default_manifests_secret,
-            default_ns,
-        )
-        .await
-        {
+        if let Err(e) = get_manifests_secret(&client, default_manifests_secret, default_ns).await {
             bail!(
                     "no Secret with name '{}' in namespace '{}' found (this secret should hold default manifests that get applied in each new namespace): {} -- aborting",
                     default_manifests_secret, default_ns, e);
@@ -158,11 +153,9 @@ impl Operator for ProjectOperator {
     }
 
     async fn admission_hook_tls(&self) -> anyhow::Result<AdmissionTls> {
-        // TOOD: make dynamic
         let client = self.shared.read().await.client.clone();
         let namespace = &self.shared.read().await.default_ns;
 
-        // TODO: extract as method
         let name = Project::admission_webhook_secret_name();
 
         match Api::<Secret>::namespaced(client, namespace)
@@ -180,4 +173,32 @@ impl Operator for ProjectOperator {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+}
+
+pub async fn get_manifests_secret(
+    client: &kube::Client,
+    secret_name: &str,
+    namespace: &str,
+) -> anyhow::Result<Secret> {
+    let secret_api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), &namespace);
+
+    let secret = secret_api.get(secret_name).await?;
+
+    let annotation = secret
+        .metadata
+        .annotations
+        .as_ref()
+        .and_then(|annotations| {
+            annotations.get(crate::self_service::project::SECRET_ANNOTATION_KEY)
+        });
+
+    ensure!(
+        annotation.is_some() && annotation.unwrap() == crate::self_service::project::SECRET_ANNOTATION_VALUE,
+        "Error accessing secret '{}': only secrets with the annotation '{}: {}' can be accessed by the project operator",
+        secret_name,
+        crate::self_service::project::SECRET_ANNOTATION_KEY,
+        crate::self_service::project::SECRET_ANNOTATION_VALUE
+        );
+
+    Ok(secret)
 }

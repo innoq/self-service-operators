@@ -5,11 +5,12 @@ use krator::{Manifest, State, Transition};
 use kube::Resource;
 use tokio::sync::RwLock;
 
-use crate::self_service::helper;
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
 use crate::self_service::states::error::Error;
-use crate::self_service::states::{ApplyManifests, ProjectPhase, ProjectState, SharedState};
+use crate::self_service::states::{
+    apply_manifests, ApplyManifests, ProjectPhase, ProjectState, SharedState,
+};
 
 #[derive(Debug, Default)]
 /// Project is sleeping.
@@ -46,7 +47,8 @@ impl State<ProjectState> for SetupRBACPermissions {
         ]
         .iter()
         {
-            if let Err(e) = helper::apply_yaml_manifest(&client, &manifest, &project).await {
+            if let Err(e) = apply_manifests::apply_yaml_manifest(&client, &manifest, &project).await
+            {
                 state.error = format!("error applying {}: {}", name, e);
 
                 return Transition::next(self, Error);

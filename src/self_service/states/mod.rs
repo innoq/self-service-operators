@@ -14,7 +14,7 @@ pub(crate) use wait_for_changes::WaitForChanges;
 
 use crate::self_service::project::{Project, ProjectSpec, ProjectStatus, DEFAULT_MANIFESTS_SECRET};
 
-mod apply_manifests;
+pub mod apply_manifests;
 mod create_namespace;
 mod error;
 mod released;

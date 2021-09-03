@@ -19,7 +19,7 @@ pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::self_service::helper;
+use crate::self_service;
 use crate::self_service::states::ProjectPhase;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
@@ -466,7 +466,7 @@ impl ObjectStatus for ProjectStatus {
     fn failed(e: &str) -> ProjectStatus {
         let message = format!("error: {}", e);
         ProjectStatus {
-            summary: Some(helper::shorten_string(&message)),
+            summary: Some(self_service::shorten_string(&message)),
             message: Some(message),
             phase: None,
         }

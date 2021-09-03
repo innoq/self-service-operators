@@ -152,7 +152,7 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
     }
 
     let wait_for_crd_created = wait_for_state(&api, &name, WaitForState::Created);
-    let crd = noqnoqnoq::self_service::helper::install_crd(&client, &Project::crd()).await?;
+    let crd = noqnoqnoq::install_crd(&client, &Project::crd()).await?;
     let _ = wait_for_crd_created.await?;
 
     const NAMESPACE: &str = "default";

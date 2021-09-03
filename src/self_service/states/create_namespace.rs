@@ -6,7 +6,6 @@ use krator::{Manifest, State, Transition};
 use kube::api::PostParams;
 use tokio::sync::RwLock;
 
-use crate::self_service::helper;
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
 use crate::self_service::states::error::Error;
@@ -31,7 +30,7 @@ impl State<ProjectState> for CreateNamespace {
         let name = project.clone().metadata.name.unwrap();
 
         if let Ok(namespace) = api.get(&name).await {
-            if helper::is_owned_by_project(&project, &namespace) {
+            if is_owned_by_project(&project, &namespace) {
                 return Transition::next(self, SetupRBACPermissions);
             } else {
                 state.error = format!(
@@ -71,4 +70,29 @@ impl State<ProjectState> for CreateNamespace {
             summary: Some(format!("creating namespace {}", state.name)),
         })
     }
+}
+
+pub fn is_owned_by_project<R>(project: &Project, resource: &R) -> bool
+where
+    R: kube::Resource + k8s_openapi::Resource,
+{
+    if resource.meta().owner_references.is_none() {
+        return false;
+    }
+
+    if let Some(owners) = resource.meta().owner_references.as_ref() {
+        if owners.is_empty() {
+            return false;
+        }
+
+        let owner = &owners[0];
+
+        return owner.api_version == project.api_version
+            && owner.controller == Some(true)
+            && owner.kind == project.kind
+            && owner.name == *project.metadata.name.as_ref().unwrap()
+            && owner.uid == project.metadata.uid.clone().unwrap_or_else(String::new);
+    }
+
+    true
 }

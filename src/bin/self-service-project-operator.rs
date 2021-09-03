@@ -11,10 +11,10 @@ use krator::OperatorRuntime;
 use log::LevelFilter;
 pub use schemars::JsonSchema;
 
+use noqnoqnoq::self_service::operator;
 use noqnoqnoq::self_service::project;
 use noqnoqnoq::self_service::project::Project;
 use noqnoqnoq::self_service::project::Sample;
-use noqnoqnoq::self_service::{helper, operator};
 
 #[derive(Clap)]
 #[clap(
@@ -114,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
         .context("error creating kubernetes client from the current environment")?;
 
     if opts.install_crd {
-        return helper::install_crd(&client, &Project::crd())
+        return noqnoqnoq::install_crd(&client, &Project::crd())
             .await
             .and(Ok(()));
     }

@@ -8,12 +8,12 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
+use noqnoqnoq::self_service::project::Sample;
 use noqnoqnoq::self_service::project::{Project, ProjectSpec};
-use noqnoqnoq::self_service::{helper, project};
+use noqnoqnoq::self_service::{operator, project};
 
 use crate::common;
 use crate::common::WaitForState;
-use noqnoqnoq::self_service::project::Sample;
 
 #[tokio::test]
 #[serial]
@@ -59,11 +59,11 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
         )
         .await?;
 
-    let resources = helper::get_manifests_secret(&client, "i-do-not-exist", &name).await;
+    let resources = operator::get_manifests_secret(&client, "i-do-not-exist", &name).await;
     assert!(resources.is_err());
     assert_eq!(resources.unwrap_err().to_string(), "ApiError: secrets \"i-do-not-exist\" not found: NotFound (ErrorResponse { status: \"Failure\", message: \"secrets \\\"i-do-not-exist\\\" not found\", reason: \"NotFound\", code: 404 })");
 
-    let resources = helper::get_manifests_secret(&client, "standard-secret", &name).await;
+    let resources = operator::get_manifests_secret(&client, "standard-secret", &name).await;
     assert!(resources.is_err());
     assert_eq!(
 		resources.unwrap_err().to_string(),
@@ -74,7 +74,7 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
 		)
 	);
 
-    let resources = helper::get_manifests_secret(&client, "annotated-secret", &name).await;
+    let resources = operator::get_manifests_secret(&client, "annotated-secret", &name).await;
     assert!(resources.is_ok());
 
     assert!(

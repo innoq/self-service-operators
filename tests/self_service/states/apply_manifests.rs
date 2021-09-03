@@ -8,7 +8,6 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-
 use noqnoqnoq::self_service::project::Sample;
 use noqnoqnoq::self_service::project::{Project, ProjectSpec};
 
