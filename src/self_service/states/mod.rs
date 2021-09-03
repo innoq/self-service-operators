@@ -8,20 +8,18 @@ use serde::{Deserialize, Serialize};
 pub(crate) use apply_manifests::ApplyManifests;
 pub(crate) use create_namespace::CreateNamespace;
 pub(crate) use error::Error;
-pub(crate) use new_project::NewProject;
 pub(crate) use released::Released;
-pub use setup_rbac_permissions::SetupRBACPermissions;
+pub(crate) use setup_rbac_permissions::SetupRBACPermissions;
 pub(crate) use wait_for_changes::WaitForChanges;
 
-use crate::project::Project;
-use crate::project::{ProjectSpec, ProjectStatus, DEFAULT_MANIFESTS_SECRET};
+use crate::self_service::project::{Project, ProjectSpec, ProjectStatus, DEFAULT_MANIFESTS_SECRET};
 
 mod apply_manifests;
 mod create_namespace;
 mod error;
-mod new_project;
 mod released;
 mod setup_rbac_permissions;
+mod transitions;
 mod wait_for_changes;
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]

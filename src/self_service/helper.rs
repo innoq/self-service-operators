@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use crate::project;
-use crate::project::Project;
+
+use crate::self_service::project::Project;
 use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Context;
@@ -61,14 +61,16 @@ pub async fn get_manifests_secret(
         .metadata
         .annotations
         .as_ref()
-        .and_then(|annotations| annotations.get(crate::project::SECRET_ANNOTATION_KEY));
+        .and_then(|annotations| {
+            annotations.get(crate::self_service::project::SECRET_ANNOTATION_KEY)
+        });
 
     ensure!(
-        annotation.is_some() && annotation.unwrap() == crate::project::SECRET_ANNOTATION_VALUE,
+        annotation.is_some() && annotation.unwrap() == crate::self_service::project::SECRET_ANNOTATION_VALUE,
         "Error accessing secret '{}': only secrets with the annotation '{}: {}' can be accessed by the project operator",
         secret_name,
-        crate::project::SECRET_ANNOTATION_KEY,
-        crate::project::SECRET_ANNOTATION_VALUE
+        crate::self_service::project::SECRET_ANNOTATION_KEY,
+        crate::self_service::project::SECRET_ANNOTATION_VALUE
         );
 
     Ok(secret)
@@ -226,7 +228,7 @@ pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow
     }
 }
 
-pub fn is_owned_by_project<R>(project: &project::Project, resource: &R) -> bool
+pub fn is_owned_by_project<R>(project: &Project, resource: &R) -> bool
 where
     R: kube::Resource + k8s_openapi::Resource,
 {

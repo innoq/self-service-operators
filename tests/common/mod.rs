@@ -1,4 +1,3 @@
-use log::debug;
 use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{convert::TryFrom, path::Path};
@@ -14,14 +13,17 @@ use krator::OperatorRuntime;
 use kube::api::{self, DeleteParams, Patch, PatchParams};
 use kube::api::{PostParams, WatchEvent};
 use kube::{config, Client};
+use log::debug;
 use tokio::select;
 use tokio::task::JoinHandle;
 use tokio::time;
 
 use noqnoqnoq::self_service::operator;
 use noqnoqnoq::self_service::operator::ProjectOperator;
+use noqnoqnoq::self_service::project;
+use noqnoqnoq::self_service::project::Project;
+use noqnoqnoq::self_service::project::ProjectSpec;
 use noqnoqnoq::self_service::project::Sample;
-use noqnoqnoq::{project::Project, self_service::project};
 
 pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let (config, client) = get_client().await?;
@@ -140,7 +142,7 @@ pub enum WaitForState {
 
 pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result<()> {
     let api: kube::Api<CustomResourceDefinition> = kube::Api::all(client.clone());
-    let name = project::Project::crd().metadata.name.unwrap();
+    let name = Project::crd().metadata.name.unwrap();
 
     if api.get(&name).await.is_ok() {
         let wait_for_crd_deleted = wait_for_state(&api, &name, WaitForState::Deleted);
@@ -150,7 +152,7 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
     }
 
     let wait_for_crd_created = wait_for_state(&api, &name, WaitForState::Created);
-    let crd = noqnoqnoq::helper::install_crd(&client, &project::Project::crd()).await?;
+    let crd = noqnoqnoq::self_service::helper::install_crd(&client, &Project::crd()).await?;
     let _ = wait_for_crd_created.await?;
 
     const NAMESPACE: &str = "default";
@@ -307,9 +309,9 @@ where
 pub async fn install_project(
     client: &kube::Client,
     #[allow(clippy::ptr_arg)] name: &String,
-) -> anyhow::Result<project::Project> {
+) -> anyhow::Result<Project> {
     let timeout_secs = 10;
-    let project_api: kube::Api<project::Project> = kube::Api::all(client.clone());
+    let project_api: kube::Api<Project> = kube::Api::all(client.clone());
 
     let wait_for_namespace_created_handle = wait_for_state(
         &kube::Api::<Namespace>::all(client.clone()),
@@ -322,10 +324,10 @@ pub async fn install_project(
 
     let manifest_values = "name: templated-name";
 
-    let mut spec = project::ProjectSpec::sample();
+    let mut spec = ProjectSpec::sample();
     spec.manifest_values = Some(manifest_values.into());
 
-    let project = project::Project::new(name.as_str(), spec);
+    let project = Project::new(name.as_str(), spec);
 
     let project_resource = project_api.create(&PostParams::default(), &project).await;
 
@@ -359,7 +361,7 @@ pub fn random_name(prefix: &str) -> String {
 }
 
 #[allow(dead_code)] // it's not used by every test and therefore sometimes throws warnings
-pub fn assert_is_owned_by_project<R>(project: &project::Project, resource: &R) -> anyhow::Result<()>
+pub fn assert_is_owned_by_project<R>(project: &Project, resource: &R) -> anyhow::Result<()>
 where
     R: kube::Resource + k8s_openapi::Resource,
 {
@@ -407,7 +409,7 @@ where
 pub async fn assert_project_is_in_waiting_state(client: &Client, name: &str) -> anyhow::Result<()> {
     let mut last_summary = "".to_string();
 
-    let api: kube::Api<project::Project> = kube::Api::all(client.clone());
+    let api: kube::Api<Project> = kube::Api::all(client.clone());
     for _ in 0..60 {
         let _ = time::sleep(Duration::from_secs(1)).await;
         let project = api.get(&name).await?;

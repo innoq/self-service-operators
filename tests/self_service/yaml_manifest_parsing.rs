@@ -1,12 +1,14 @@
-use crate::common::WaitForState;
 use k8s_openapi::api::core::v1::{Pod, Secret, ServiceAccount};
 use k8s_openapi::ByteString;
 use kube::api::DeleteParams;
-use noqnoqnoq::project::{Project, ProjectSpec};
-use noqnoqnoq::{helper, project};
 use serial_test::serial;
 
-mod common;
+use noqnoqnoq::self_service::helper;
+use noqnoqnoq::self_service::project::Project;
+use noqnoqnoq::self_service::project::ProjectSpec;
+
+use crate::common;
+use crate::common::WaitForState;
 
 #[tokio::test]
 #[serial]
@@ -17,21 +19,21 @@ async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<(
 
     // Create a pod from JSON
     let pod_manifest = project.render(
-        &ByteString(include_str!("fixtures/pod.yaml").as_bytes().to_vec()),
+        &ByteString(include_str!("../fixtures/pod.yaml").as_bytes().to_vec()),
         "foo",
     )?;
 
     let pod_api_path = helper::resource_path(&client, &pod_manifest).await?;
     assert_eq!("/api/v1/namespaces/xxx/pods/foo".to_string(), pod_api_path);
 
-    let deploy_manifest = include_str!("fixtures/deployment.yaml");
+    let deploy_manifest = include_str!("../fixtures/deployment.yaml");
     let deploy_api_path = helper::resource_path(&client, deploy_manifest).await?;
     assert_eq!(
         "/apis/apps/v1/namespaces/xxx/deployments/my-deployment".to_string(),
         deploy_api_path
     );
 
-    let role_manifest = include_str!("fixtures/role.yaml");
+    let role_manifest = include_str!("../fixtures/role.yaml");
     let role_api_path = helper::resource_path(&client, role_manifest).await?;
     assert_eq!(
         "/apis/rbac.authorization.k8s.io/v1/namespaces/xxx/roles/podreader".to_string(),
@@ -46,7 +48,7 @@ async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<(
 async fn it_rejects_manifests_with_an_unset_namespace() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
     // Create a pod from JSON
-    let pod_manifest = include_str!("fixtures/missing-namespace-pod.yaml");
+    let pod_manifest = include_str!("../fixtures/missing-namespace-pod.yaml");
     let pod_api_path = helper::resource_path(&client, pod_manifest).await;
     assert!(
         pod_api_path.is_err(),
@@ -88,7 +90,7 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     }
 
     // Create a pod from YAML
-    let pod_manifest = include_str!("fixtures/pod2.yaml");
+    let pod_manifest = include_str!("../fixtures/pod2.yaml");
     let templated_manifest = project.render(
         &k8s_openapi::ByteString(pod_manifest.as_bytes().to_vec()),
         "foo",
@@ -110,7 +112,7 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
         "pod should be owned by project"
     );
 
-    kube::Api::<project::Project>::all(client.clone())
+    kube::Api::<Project>::all(client.clone())
         .delete(name.as_str(), &DeleteParams::default())
         .await?;
 

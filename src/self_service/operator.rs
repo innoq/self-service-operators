@@ -1,7 +1,8 @@
-use crate::project::Project;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Context;
 use k8s_openapi::api::core::v1::{Namespace, Secret};
 use k8s_openapi::api::rbac::v1::ClusterRole;
@@ -11,11 +12,9 @@ use krator::{Manifest, Operator};
 use kube::{Api, Resource};
 use tokio::sync::RwLock;
 
-use anyhow::anyhow;
-use anyhow::bail;
-
-use crate::project::ProjectStatus;
-use crate::self_service::transitions::{NewProject, ProjectState, Released, SharedState};
+use crate::self_service::project::Project;
+use crate::self_service::project::ProjectStatus;
+use crate::self_service::states::{CreateNamespace, ProjectState, Released, SharedState};
 
 #[derive(Clone)]
 pub struct ProjectOperator {
@@ -38,8 +37,12 @@ impl ProjectOperator {
             manifest_retry_delay,
         }));
 
-        if let Err(e) =
-            crate::helper::get_manifests_secret(&client, default_manifests_secret, default_ns).await
+        if let Err(e) = crate::self_service::helper::get_manifests_secret(
+            &client,
+            default_manifests_secret,
+            default_ns,
+        )
+        .await
         {
             bail!(
                     "no Secret with name '{}' in namespace '{}' found (this secret should hold default manifests that get applied in each new namespace): {} -- aborting",
@@ -65,7 +68,7 @@ impl Operator for ProjectOperator {
     type Manifest = Project;
     type Status = ProjectStatus;
     type ObjectState = ProjectState;
-    type InitialState = NewProject;
+    type InitialState = CreateNamespace;
     type DeletedState = Released;
 
     async fn initialize_object_state(

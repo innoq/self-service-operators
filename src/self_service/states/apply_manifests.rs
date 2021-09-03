@@ -1,20 +1,16 @@
 use std::sync::Arc;
 
-use krator::{Manifest, State, Transition, TransitionTo};
+use krator::{Manifest, State, Transition};
 use tokio::sync::RwLock;
 
-use crate::helper;
-use crate::project::Project;
-use crate::project::ProjectStatus;
-use crate::self_service::transitions::{Error, SharedState};
-use crate::self_service::transitions::{ProjectPhase, ProjectState, WaitForChanges};
+use crate::self_service::helper;
+use crate::self_service::project::Project;
+use crate::self_service::project::ProjectStatus;
+use crate::self_service::states::{Error, SharedState};
+use crate::self_service::states::{ProjectPhase, ProjectState, WaitForChanges};
 
 #[derive(Debug, Default)]
 pub(crate) struct ApplyManifests;
-
-impl TransitionTo<WaitForChanges> for ApplyManifests {}
-
-impl TransitionTo<Error> for ApplyManifests {}
 
 #[async_trait::async_trait]
 impl State<ProjectState> for ApplyManifests {

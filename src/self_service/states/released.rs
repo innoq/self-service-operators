@@ -3,9 +3,9 @@ use std::sync::Arc;
 use krator::{Manifest, State, Transition};
 use tokio::sync::RwLock;
 
-use crate::project::Project;
-use crate::project::ProjectStatus;
-use crate::self_service::transitions::{ProjectState, SharedState};
+use crate::self_service::project::Project;
+use crate::self_service::project::ProjectStatus;
+use crate::self_service::states::{ProjectState, SharedState};
 
 #[derive(Debug, Default)]
 /// Project was released from our care.

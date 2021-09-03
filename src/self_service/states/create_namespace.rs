@@ -2,25 +2,19 @@ use std::sync::Arc;
 
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-use krator::{Manifest, State, Transition, TransitionTo};
+use krator::{Manifest, State, Transition};
 use kube::api::PostParams;
 use tokio::sync::RwLock;
 
-use crate::helper;
-use crate::project::Project;
-use crate::project::ProjectStatus;
-use crate::self_service::transitions::error::Error;
-use crate::self_service::transitions::{
-    ProjectPhase, ProjectState, SetupRBACPermissions, SharedState,
-};
+use crate::self_service::helper;
+use crate::self_service::project::Project;
+use crate::self_service::project::ProjectStatus;
+use crate::self_service::states::error::Error;
+use crate::self_service::states::{ProjectPhase, ProjectState, SetupRBACPermissions, SharedState};
 
 #[derive(Debug, Default)]
 /// Project is creating a namespace
 pub struct CreateNamespace;
-
-impl TransitionTo<SetupRBACPermissions> for CreateNamespace {}
-
-impl TransitionTo<Error> for CreateNamespace {}
 
 #[async_trait::async_trait]
 impl State<ProjectState> for CreateNamespace {

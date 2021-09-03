@@ -1,25 +1,19 @@
 use std::sync::Arc;
 
-use krator::{Manifest, State, Transition, TransitionTo};
+use futures::{StreamExt, TryStreamExt};
+use krator::{Manifest, State, Transition};
 use kube::api::{ListParams, WatchEvent};
 use tokio::sync::RwLock;
 
-use crate::project::Project;
-use crate::project::ProjectStatus;
-use crate::self_service::transitions::create_namespace::CreateNamespace;
-use crate::self_service::transitions::error::Error;
-use crate::self_service::transitions::{ProjectPhase, ProjectState, SharedState};
-use futures::{StreamExt, TryStreamExt};
+use crate::self_service::project::Project;
+use crate::self_service::project::ProjectStatus;
+use crate::self_service::states::create_namespace::CreateNamespace;
+use crate::self_service::states::error::Error;
+use crate::self_service::states::{ProjectPhase, ProjectState, SharedState};
 
 #[derive(Debug, Default)]
 /// Project is sleeping.
 pub(crate) struct WaitForChanges;
-
-impl TransitionTo<WaitForChanges> for WaitForChanges {}
-
-impl TransitionTo<CreateNamespace> for WaitForChanges {}
-
-impl TransitionTo<Error> for WaitForChanges {}
 
 #[async_trait::async_trait]
 impl State<ProjectState> for WaitForChanges {

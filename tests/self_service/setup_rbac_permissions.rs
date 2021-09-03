@@ -1,103 +1,16 @@
-use std::time::Duration;
+use core::time::Duration;
 
-use anyhow::bail;
-use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
-use kube::api::{DeleteParams, PostParams};
-use kube::{Resource, ResourceExt};
+use kube::Resource;
 use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use noqnoqnoq::project::{self, Project, ProjectSpec};
-use noqnoqnoq::self_service::operator;
+use noqnoqnoq::self_service::project;
+use noqnoqnoq::self_service::project::Project;
 
+use crate::common;
 use crate::common::WaitForState;
-
-mod common;
-
-#[tokio::test]
-#[serial]
-async fn it_creates_and_deletes_namespace() -> anyhow::Result<()> {
-    let timeout_secs = 60;
-    let (client, _) = common::before_each().await?;
-
-    let name = common::random_name("namespace-test");
-    let project = common::install_project(&client, &name).await?;
-
-    let ns_api: kube::Api<Namespace> = kube::Api::all(client.clone());
-    let project_namespace = ns_api.get(&name).await?;
-
-    assert!(
-        common::assert_is_owned_by_project(&project, &project_namespace).is_ok(),
-        "namespace should be owned by project"
-    );
-
-    let wait_for_project_deleted_handle = common::wait_for_state(
-        &kube::Api::<project::Project>::all(client.clone()),
-        &name,
-        WaitForState::Deleted,
-    );
-
-    let wait_for_namespace_deleted_handle =
-        common::wait_for_state(&ns_api, &name, WaitForState::Deleted);
-
-    assert!(
-        kube::Api::<project::Project>::all(client.clone())
-            .delete(&name, &DeleteParams::default())
-            .await
-            .is_ok(),
-        "deleting project should work"
-    );
-
-    select! {
-    res = futures::future::try_join(wait_for_project_deleted_handle,wait_for_namespace_deleted_handle) => {
-        match res {
-            Ok(_) => (),
-            Err(e) => bail!("error deleting namespace {}: {}", name, e)
-        }
-    },
-        _ = time::sleep(Duration::from_secs(timeout_secs)) => bail!("deleting project {} deletes project and namespace within {} seconds", name, timeout_secs)
-    }
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
-
-    let name = common::random_name("update-project");
-    let _ = common::install_project(&client, &name).await?;
-
-    let api: kube::Api<Project> = kube::Api::all(client.clone());
-
-    let _ = common::assert_project_is_in_waiting_state(&client, &name).await;
-
-    let mut project = api.get(&name).await?;
-    let resource_version = project.resource_version();
-    project.spec = ProjectSpec {
-        owners: vec!["newowner@example.com".to_string()],
-        manifest_values: project.spec.manifest_values,
-    };
-    let meta = project.meta_mut();
-    meta.resource_version = resource_version;
-    meta.managed_fields = None;
-
-    if let Err(e) = api.replace(&name, &PostParams::default(), &project).await {
-        panic!("error updating project: {:?}:\n{}", &project, e);
-    }
-
-    assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
-            .await
-            .is_ok(),
-        "project should be in waiting state"
-    );
-
-    Ok(())
-}
 
 #[tokio::test]
 #[serial]
@@ -220,43 +133,6 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
         "project should be in waiting state"
     );
 
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Result<()> {
-    let (_, client) = common::get_client().await?;
-
-    assert!(
-        common::apply_manifest_secret(
-            &client,
-            project::DEFAULT_MANIFESTS_SECRET,
-            vec![include_str!("fixtures/pod.yaml")]
-        )
-        .await
-        .is_ok(),
-        "installing default manifest secret should work"
-    );
-
-    match operator::ProjectOperator::new(
-        client.clone(),
-        "non-existant-cluster-role-name",
-        "default",
-        project::DEFAULT_MANIFESTS_SECRET,
-        Duration::from_secs(0),
-    )
-    .await
-    {
-        Ok(_) => panic!(
-            "project operator should fail if the given default owner cluster role does not exist"
-        ),
-        Err(e) => assert_eq!(
-            e.to_string(),
-            "no ClusterRole with name 'non-existant-cluster-role-name' found -- aborting",
-            "error message should be correct"
-        ),
-    };
     Ok(())
 }
 

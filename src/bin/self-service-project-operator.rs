@@ -12,6 +12,7 @@ use log::LevelFilter;
 pub use schemars::JsonSchema;
 
 use noqnoqnoq::self_service::project;
+use noqnoqnoq::self_service::project::Project;
 use noqnoqnoq::self_service::project::Sample;
 use noqnoqnoq::self_service::{helper, operator};
 
@@ -78,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
     if opts.print_crd {
         println!(
             "# self service crd (auto-generated with 'noqnoqnoq --print-crd'):\n{}\n",
-            serde_yaml::to_string(&project::Project::crd()).unwrap()
+            serde_yaml::to_string(&Project::crd()).unwrap()
         );
         exit(0)
     }
@@ -86,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
     if opts.print_sample_project_manifest {
         println!(
       "# self service sample project manifest (auto-generated with 'self-service-operator --print-sample-project-manifest'):\n{}\n",
-      serde_yaml::to_string(&project::Project::sample()).unwrap()
+      serde_yaml::to_string(&Project::sample()).unwrap()
     );
         exit(0)
     }
@@ -101,9 +102,9 @@ async fn main() -> anyhow::Result<()> {
     if opts.print_admission_controller_manifests {
         println!(
             "{}",
-            krator::admission::WebhookResources::from(
-                project::Project::admission_webhook_resources(&namespace)
-            )
+            krator::admission::WebhookResources::from(Project::admission_webhook_resources(
+                &namespace
+            ))
         );
 
         exit(0)
@@ -113,14 +114,14 @@ async fn main() -> anyhow::Result<()> {
         .context("error creating kubernetes client from the current environment")?;
 
     if opts.install_crd {
-        return helper::install_crd(&client, &project::Project::crd())
+        return helper::install_crd(&client, &Project::crd())
             .await
             .and(Ok(()));
     }
 
     if !opts.skip_install_admission_controller_manifests {
         let resources = krator::admission::WebhookResources::from(
-            project::Project::admission_webhook_resources(&namespace),
+            Project::admission_webhook_resources(&namespace),
         );
 
         resources.apply(&client).await?;

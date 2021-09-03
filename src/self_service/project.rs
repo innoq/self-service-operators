@@ -19,9 +19,8 @@ pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::helper;
-
-use crate::self_service::transitions::ProjectPhase;
+use crate::self_service::helper;
+use crate::self_service::states::ProjectPhase;
 
 pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
