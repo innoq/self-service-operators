@@ -1,15 +1,18 @@
-use crate::common::WaitForState;
+use std::time::Duration;
+
 use anyhow::bail;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, RoleBinding};
-
 use kube::api::{DeleteParams, PostParams};
 use kube::{Resource, ResourceExt};
-use noqnoqnoq::project::{self, Project, ProjectSpec};
 use serial_test::serial;
-use std::time::Duration;
 use tokio::select;
 use tokio::time;
+
+use noqnoqnoq::project::{self, Project, ProjectSpec};
+use noqnoqnoq::self_service::operator;
+
+use crate::common::WaitForState;
 
 mod common;
 
@@ -162,6 +165,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
         Some(vec!["projects".to_string()]),
         "owner cluster role should have correct resource set"
     );
+
     assert_eq!(
         rule.verbs,
         vec![
@@ -235,7 +239,7 @@ async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Resu
         "installing default manifest secret should work"
     );
 
-    match project::ProjectOperator::new(
+    match operator::ProjectOperator::new(
         client.clone(),
         "non-existant-cluster-role-name",
         "default",

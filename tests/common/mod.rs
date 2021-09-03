@@ -1,3 +1,8 @@
+use log::debug;
+use std::collections::BTreeMap;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{convert::TryFrom, path::Path};
+
 use futures::{StreamExt, TryStreamExt};
 use k8s::api::core::v1::Secret;
 use k8s::api::{admissionregistration::v1::MutatingWebhookConfiguration, core::v1::Service};
@@ -9,16 +14,14 @@ use krator::OperatorRuntime;
 use kube::api::{self, DeleteParams, Patch, PatchParams};
 use kube::api::{PostParams, WatchEvent};
 use kube::{config, Client};
-use noqnoqnoq::{
-    project::{Project, ProjectOperator},
-    self_service::{project, Sample},
-};
-use std::collections::BTreeMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{convert::TryFrom, path::Path};
 use tokio::select;
 use tokio::task::JoinHandle;
 use tokio::time;
+
+use noqnoqnoq::self_service::operator;
+use noqnoqnoq::self_service::operator::ProjectOperator;
+use noqnoqnoq::self_service::project::Sample;
+use noqnoqnoq::{project::Project, self_service::project};
 
 pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let (config, client) = get_client().await?;
@@ -37,7 +40,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     // there is probably a better way FnOnce?
     let _ = reinstall_self_service_crd(&client).await?;
 
-    let operator = project::ProjectOperator::new(
+    let operator = operator::ProjectOperator::new(
         client.clone(),
         "admin",
         "default",
@@ -54,13 +57,13 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
 }
 
 pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error> {
-    let mut kubeconfig = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
-    kubeconfig.clusters[0].cluster.server = kubeconfig.clusters[0]
+    let mut kube_config = config::Kubeconfig::read_from(Path::new("./kind.kubeconfig"))?;
+    kube_config.clusters[0].cluster.server = kube_config.clusters[0]
         .cluster
         .server
         .replace("127.0.0.1", "localhost");
     let mut config =
-        config::Config::from_custom_kubeconfig(kubeconfig, &config::KubeConfigOptions::default())
+        config::Config::from_custom_kubeconfig(kube_config, &config::KubeConfigOptions::default())
             .await?;
     config.timeout = Some(Duration::from_secs(10));
     let client = kube::Client::try_from(config.clone())?;
@@ -194,7 +197,7 @@ where
     let api = api.clone();
 
     tokio::spawn(async move {
-        println!(
+        debug!(
             "{} with name {} waiting for state {:?}",
             K::KIND,
             name,
@@ -230,7 +233,7 @@ where
 
         let print_info = {
             |e: &WatchEvent<K>, resource: &K| {
-                println!(
+                debug!(
                     "  - {:?} for {} with name {} received",
                     e,
                     K::KIND,
@@ -252,7 +255,7 @@ where
                         }
                     }
                     WatchEvent::Bookmark(bookmark) => {
-                        println!(" - {:?} for {}", status, bookmark.types.kind);
+                        debug!(" - {:?} for {}", status, bookmark.types.kind);
                     }
                     WatchEvent::Modified(resource) => {
                         print_info(&status, &resource);
@@ -267,7 +270,7 @@ where
                         }
                     }
                     WatchEvent::Error(e) => {
-                        println!(" - ERROR watching {} with name {}: {}", K::KIND, name, e);
+                        debug!(" - ERROR watching {} with name {}: {:?}", K::KIND, name, e);
                     }
                 },
                 Ok(None) => {
@@ -277,7 +280,7 @@ where
                         break;
                     }
 
-                    eprintln!(
+                    debug!(
                         "  - too early to watch {} with name {} (event: {:?})",
                         K::KIND,
                         &name,
@@ -287,8 +290,8 @@ where
                     panic!("");
                 }
                 Err(e) => {
-                    println!(
-                        " - ERROR getting {} with name {} from stream: {}",
+                    debug!(
+                        " - ERROR getting {} with name {} from stream: {:?}",
                         K::KIND,
                         name,
                         e
@@ -328,7 +331,7 @@ pub async fn install_project(
 
     assert!(
         project_resource.is_ok(),
-        "creating a new self service project should work correclty: {}",
+        "creating a new self service project should work correctly: {}",
         project_resource.err().unwrap()
     );
     assert!(
@@ -355,6 +358,7 @@ pub fn random_name(prefix: &str) -> String {
     )
 }
 
+#[allow(dead_code)] // it's not used by every test and therefore sometimes throws warnings
 pub fn assert_is_owned_by_project<R>(project: &project::Project, resource: &R) -> anyhow::Result<()>
 where
     R: kube::Resource + k8s_openapi::Resource,
@@ -399,6 +403,7 @@ where
     Ok(())
 }
 
+#[allow(dead_code)] // it's not used by every test and therefore sometimes throws warnings
 pub async fn assert_project_is_in_waiting_state(client: &Client, name: &str) -> anyhow::Result<()> {
     let mut last_summary = "".to_string();
 

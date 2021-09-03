@@ -1,6 +1,8 @@
 use crate::common::WaitForState;
 use k8s_openapi::api::core::v1::{Pod, Secret, ServiceAccount};
+use k8s_openapi::ByteString;
 use kube::api::DeleteParams;
+use noqnoqnoq::project::{Project, ProjectSpec};
 use noqnoqnoq::{helper, project};
 use serial_test::serial;
 
@@ -10,9 +12,16 @@ mod common;
 #[serial]
 async fn it_construct_a_correct_api_path_for_yaml_manifest() -> anyhow::Result<()> {
     let (client, _) = common::before_each().await?;
+
+    let project = Project::new("xxx", ProjectSpec::default());
+
     // Create a pod from JSON
-    let pod_manifest = include_str!("fixtures/pod.yaml");
-    let pod_api_path = helper::resource_path(&client, pod_manifest).await?;
+    let pod_manifest = project.render(
+        &ByteString(include_str!("fixtures/pod.yaml").as_bytes().to_vec()),
+        "foo",
+    )?;
+
+    let pod_api_path = helper::resource_path(&client, &pod_manifest).await?;
     assert_eq!("/api/v1/namespaces/xxx/pods/foo".to_string(), pod_api_path);
 
     let deploy_manifest = include_str!("fixtures/deployment.yaml");
@@ -50,7 +59,7 @@ async fn it_rejects_manifests_with_an_unset_namespace() -> anyhow::Result<()> {
             .unwrap()
             .to_string()
             .as_str(),
-        "setting namespace is required: resource v1/Pod with name 'foo' has no namespace set ... in most cases you want to set it to {{ __PROJECT_NAME__ }}"
+        "setting namespace is required: resource v1/Pod with name 'foo' has no namespace set ... in most cases you want to set it to {{ __PROJECT_NAME__ }}\nManifest is: ---\napiVersion: v1\nkind: Pod\nmetadata:\n  name: foo\nspec:\n  containers:\n    - name: foo\n      image: alpine\n      command: ['sh', '-c', 'echo Hello Kubernetes! && sleep 3600']\n",
     );
 
     Ok(())

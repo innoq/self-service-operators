@@ -4,16 +4,16 @@ extern crate log;
 use std::time::Duration;
 use std::{convert::TryFrom, process::exit};
 
+use anyhow::Context;
 use clap::{crate_authors, crate_version, Clap};
 use env_logger::*;
 use krator::OperatorRuntime;
 use log::LevelFilter;
 pub use schemars::JsonSchema;
 
-use anyhow::Context;
-use noqnoqnoq::self_service::helper;
 use noqnoqnoq::self_service::project;
-use noqnoqnoq::self_service::Sample;
+use noqnoqnoq::self_service::project::Sample;
+use noqnoqnoq::self_service::{helper, operator};
 
 #[derive(Clap)]
 #[clap(
@@ -126,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
         resources.apply(&client).await?;
     }
 
-    let tracker = project::ProjectOperator::new(
+    let tracker = operator::ProjectOperator::new(
         client,
         &opts.default_owner_cluster_role,
         &namespace,

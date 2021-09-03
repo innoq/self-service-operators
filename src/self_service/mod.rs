@@ -1,6 +1,4 @@
 pub mod helper;
+pub mod operator;
 pub mod project;
-
-pub trait Sample {
-    fn sample() -> Self;
-}
+mod transitions;

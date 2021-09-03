@@ -1,25 +1,29 @@
-mod common;
+use std::collections::BTreeMap;
+use std::time::Duration;
 
-use crate::common::WaitForState;
 use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Pod, Secret};
 use kube::api::{ObjectMeta, PostParams};
+use serial_test::serial;
+use tokio::select;
+use tokio::time;
+
+use noqnoqnoq::self_service::operator;
+use noqnoqnoq::self_service::project::Sample;
 use noqnoqnoq::{
     helper,
     project::{self},
-    self_service::Sample,
 };
-use serial_test::serial;
-use std::collections::BTreeMap;
-use std::time::Duration;
-use tokio::select;
-use tokio::time;
+
+use crate::common::WaitForState;
+
+mod common;
 
 #[tokio::test]
 #[serial]
 async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result<()> {
     let (_, client) = common::get_client().await?;
 
-    match project::ProjectOperator::new(
+    match operator::ProjectOperator::new(
 		client.clone(),
 		project::OWNER_ROLE_BINDING_NAME,
 		"default",
