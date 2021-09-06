@@ -12,9 +12,9 @@ use kube::{Api, Resource};
 use tokio::sync::RwLock;
 
 use crate::self_service::project::project::{SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE};
+use crate::self_service::project::project_status::ProjectStatus;
 use crate::self_service::project::states::{CreateNamespace, ProjectState, Released, SharedState};
 use crate::self_service::project::Project;
-use crate::self_service::project::ProjectStatus;
 
 #[derive(Clone)]
 pub struct ProjectOperator {

@@ -10,10 +10,10 @@ use krator::{Manifest, State, Transition};
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
+use crate::self_service::project::project_status::ProjectStatus;
 use crate::self_service::project::states::{Error, SharedState};
 use crate::self_service::project::states::{ProjectPhase, ProjectState, WaitForChanges};
 use crate::self_service::project::Project;
-use crate::self_service::project::ProjectStatus;
 use std::ops::Mul;
 
 #[derive(Debug, Default)]

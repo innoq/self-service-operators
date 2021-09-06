@@ -6,12 +6,12 @@ use krator::{Manifest, State, Transition};
 use kube::api::PostParams;
 use tokio::sync::RwLock;
 
+use crate::self_service::project::project_status::ProjectStatus;
 use crate::self_service::project::states::error::Error;
 use crate::self_service::project::states::{
     ApplyManifests, ProjectPhase, ProjectState, SharedState,
 };
 use crate::self_service::project::Project;
-use crate::self_service::project::ProjectStatus;
 
 #[derive(Debug, Default)]
 /// Project is creating a namespace

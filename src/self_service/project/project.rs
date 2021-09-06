@@ -5,19 +5,15 @@ use anyhow::bail;
 use anyhow::Context;
 use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::Secret;
-
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use krator::ObjectStatus;
 use krator_derive::AdmissionWebhook;
-
 use kube::Client;
 use kube::CustomResource;
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::self_service;
-use crate::self_service::project::states::ProjectPhase;
+use crate::self_service::project::ProjectStatus;
 
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
 pub const SECRET_ANNOTATION_VALUE: &str = "grant";
@@ -26,6 +22,10 @@ pub const DEFAULT_MANIFESTS_SECRET: &str = "default-project-manifests";
 pub const COPY_ANNOTATION_BASE: &str = "project.selfservice.innoq.io";
 pub const COPY_ANNOTATION_COPY_VALUE: &str = "copy";
 pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
+
+pub trait Sample {
+    fn sample() -> Self;
+}
 
 // TODO: follow up on https://github.com/clux/kube-rs/issues/264#issuecomment-748327959
 #[derive(
@@ -298,47 +298,6 @@ impl PartialEq for Project {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
-#[doc = "Reflects the status of the current self service project"]
-pub struct ProjectStatus {
-    pub(crate) phase: Option<ProjectPhase>,
-    pub message: Option<String>,
-    pub summary: Option<String>,
-}
-
-impl ObjectStatus for ProjectStatus {
-    fn json_patch(&self) -> serde_json::Value {
-        debug!("json_patch called {:?}", self);
-        // Generate a map containing only set fields.
-
-        let mut status = serde_json::Map::new();
-
-        if let Some(phase) = self.phase.clone() {
-            status.insert("phase".to_string(), serde_json::json!(phase));
-        };
-
-        if let Some(message) = self.message.clone() {
-            status.insert("message".to_string(), serde_json::Value::String(message));
-        };
-
-        if let Some(summary) = self.summary.clone() {
-            status.insert("summary".to_string(), serde_json::Value::String(summary));
-        };
-
-        // Create status patch with map.
-        serde_json::json!({ "status": serde_json::Value::Object(status) })
-    }
-
-    fn failed(e: &str) -> ProjectStatus {
-        let message = format!("error: {}", e);
-        ProjectStatus {
-            summary: Some(self_service::project::shorten_string(&message)),
-            message: Some(message),
-            phase: None,
-        }
-    }
-}
-
 fn get_annotated_manifests(
     annotations: &BTreeMap<String, String>,
     annotation_value: &str,
@@ -361,8 +320,4 @@ fn get_annotated_manifests(
             }
         })
         .collect::<Vec<_>>()
-}
-
-pub trait Sample {
-    fn sample() -> Self;
 }

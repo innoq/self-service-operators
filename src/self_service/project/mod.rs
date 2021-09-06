@@ -1,9 +1,10 @@
+pub use project::{Project, ProjectSpec, Sample};
+pub use project_status::ProjectStatus;
+
 pub mod operator;
 pub mod project;
 mod project_status;
 pub mod states;
-
-pub use project::{Project, ProjectSpec, ProjectStatus, Sample};
 
 pub fn shorten_string(s: &str) -> String {
     let max_length = 50;

@@ -4,9 +4,9 @@ use krator::{Manifest, State, Transition};
 use tokio::sync::RwLock;
 
 use crate::self_service;
+use crate::self_service::project::project_status::ProjectStatus;
 use crate::self_service::project::states::{ProjectPhase, ProjectState, SharedState};
 use crate::self_service::project::Project;
-use crate::self_service::project::ProjectStatus;
 
 #[derive(Debug, Default)]
 /// Something went wrong
