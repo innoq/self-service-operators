@@ -1,0 +1,16 @@
+# self service sample project manifest (auto-generated with 'self-service-operator --print-sample-project-manifest'):
+---
+apiVersion: selfservice.innoq.io/v1
+kind: Project
+metadata:
+  annotations:
+    project.selfservice.innoq.io/argocd.project: copy
+    project.selfservice.innoq.io/gitlab-container-registry-secrets.private-key: skip
+  name: sample-self-service-project
+spec:
+  owners:
+    - superdev@example.com
+    - supradev@example.com
+  manifestValues: "\nproject_repo: github.com/innoq/noqnoqnoq\nproject_name: self-service-project\n"
+
+

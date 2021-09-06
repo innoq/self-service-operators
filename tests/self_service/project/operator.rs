@@ -5,9 +5,6 @@ use serial_test::serial;
 use noqnoqnoq::self_service::project::operator;
 
 use crate::common;
-use noqnoqnoq::self_service::project::project::{
-    DEFAULT_MANIFESTS_SECRET, OWNER_ROLE_BINDING_NAME,
-};
 
 #[tokio::test]
 #[serial]
@@ -16,7 +13,6 @@ async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result
 
     match operator::ProjectOperator::new(
 		client.clone(),
-		OWNER_ROLE_BINDING_NAME,
 		"default",
 		"non-existant-secret",
         Duration::from_secs(0)
@@ -32,42 +28,5 @@ async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result
             "error message should be correct"
 		),
 	};
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn it_fails_with_non_existant_owner_default_role_binding() -> anyhow::Result<()> {
-    let (_, client) = common::get_client().await?;
-
-    assert!(
-        common::apply_manifest_secret(
-            &client,
-            DEFAULT_MANIFESTS_SECRET,
-            vec![include_str!("../../fixtures/pod.yaml")]
-        )
-        .await
-        .is_ok(),
-        "installing default manifest secret should work"
-    );
-
-    match operator::ProjectOperator::new(
-        client.clone(),
-        "non-existant-cluster-role-name",
-        "default",
-        DEFAULT_MANIFESTS_SECRET,
-        Duration::from_secs(0),
-    )
-    .await
-    {
-        Ok(_) => panic!(
-            "project operator should fail if the given default owner cluster role does not exist"
-        ),
-        Err(e) => assert_eq!(
-            e.to_string(),
-            "no ClusterRole with name 'non-existant-cluster-role-name' found -- aborting",
-            "error message should be correct"
-        ),
-    };
     Ok(())
 }

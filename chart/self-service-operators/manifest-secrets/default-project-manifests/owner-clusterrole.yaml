@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: selfservice:project:owner:{{ __PROJECT_NAME__ }}
+rules:
+- apiGroups:
+  - selfservice.innoq.io
+  resourceNames:
+  - {{ __PROJECT_NAME__ }}
+  resources:
+  - projects
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete

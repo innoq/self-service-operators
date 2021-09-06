@@ -3,9 +3,9 @@ cargo fmt
 cargo fix --allow-dirty --allow-staged
 
 cargo run --bin self-service-project-operator -- \
-  --print-crd > chart/self-service-operators/crds/crd.yaml
+  --print-crd > manifests/projects.selfservice.innoq.io.yaml
 
-cargo run --bin self-service-project-operator -- --print-sample-project-manifest > self-service-project-manifest.yaml
+cargo run --bin self-service-project-operator -- --print-sample-project-manifest > manifests/project-sample.yaml
 
-git diff --exit-code chart/self-service-operators/crds/crd.yaml
-git diff --exit-code self-service-project-manifest.yaml
+git diff --exit-code manifests/projects.selfservice.innoq.io.yaml
+git diff --exit-code manifests/project-sample.yaml

@@ -5,16 +5,13 @@ use anyhow::bail;
 use anyhow::Context;
 use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::Secret;
-use k8s_openapi::api::rbac::v1::{
-    ClusterRole, ClusterRoleBinding, PolicyRule, RoleBinding, RoleRef, Subject,
-};
+
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use k8s_openapi::ByteString;
 use krator::ObjectStatus;
 use krator_derive::AdmissionWebhook;
-use kube::api::ObjectMeta;
+
 use kube::Client;
-use kube::{CustomResource, Resource};
+use kube::CustomResource;
 pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
@@ -22,7 +19,6 @@ use serde_yaml::Mapping;
 use crate::self_service;
 use crate::self_service::project::states::ProjectPhase;
 
-pub const OWNER_ROLE_BINDING_NAME: &str = "self-service-project-owner";
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
 pub const SECRET_ANNOTATION_VALUE: &str = "grant";
 pub const DEFAULT_MANIFESTS_SECRET: &str = "default-project-manifests";
@@ -70,14 +66,6 @@ pub struct ProjectSpec {
     pub manifest_values: Option<String>,
 }
 
-// TODO: this is just for nicer test output ...
-impl k8s_openapi::Resource for Project {
-    const GROUP: &'static str = "selfservice.innoq.io";
-    const API_VERSION: &'static str = "selfservice.innoq.io/v1";
-    const KIND: &'static str = "Project";
-    const VERSION: &'static str = "v1";
-}
-
 impl Sample for ProjectSpec {
     fn sample() -> Self {
         let manifest_values = r#"
@@ -96,88 +84,6 @@ project_name: self-service-project
 }
 
 impl Project {
-    pub fn owner_cluster_role_name(&self) -> String {
-        format!(
-            "selfservice:project:owner:{}",
-            self.metadata.name.as_ref().unwrap()
-        )
-    }
-
-    fn owners_as_subjects(&self) -> Vec<Subject> {
-        self.spec
-            .owners
-            .iter()
-            .map(|owner| Subject {
-                api_group: None,
-                kind: "User".to_string(),
-                name: owner.to_owned(),
-                namespace: None,
-            })
-            .collect()
-    }
-
-    pub fn rbac_manifests(
-        &self,
-        default_owner_cluster_role: &str,
-    ) -> (RoleBinding, ClusterRole, ClusterRoleBinding) {
-        let owner_role_binding_name = OWNER_ROLE_BINDING_NAME.to_string();
-
-        let rolebinding = RoleBinding {
-            metadata: ObjectMeta {
-                name: Some(owner_role_binding_name),
-                namespace: self.metadata.name.clone(),
-                owner_references: Some(vec![OwnerReference::from(self)]),
-                ..Default::default()
-            },
-            role_ref: RoleRef {
-                api_group: "rbac.authorization.k8s.io".to_string(),
-                kind: "ClusterRole".to_string(),
-                name: default_owner_cluster_role.to_string(),
-            },
-            subjects: Some(self.owners_as_subjects()),
-        };
-
-        let owner_cluster_role = ClusterRole {
-            aggregation_rule: None,
-            metadata: ObjectMeta {
-                name: Some(self.owner_cluster_role_name()),
-                owner_references: Some(vec![OwnerReference::from(self)]),
-                ..Default::default()
-            },
-            rules: Some(vec![PolicyRule {
-                api_groups: Some(vec![Project::group(&()).to_string()]),
-                non_resource_urls: None,
-                resource_names: Some(vec![self.meta().name.as_ref().unwrap().to_string()]),
-                resources: Some(vec![Project::plural(&()).to_string()]),
-                verbs: vec![
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "create".to_string(),
-                    "update".to_string(),
-                    "patch".to_string(),
-                    "delete".to_string(),
-                ],
-            }]),
-        };
-
-        let owner_cluster_role_binding = ClusterRoleBinding {
-            metadata: ObjectMeta {
-                name: Some(self.owner_cluster_role_name()),
-                owner_references: Some(vec![OwnerReference::from(self)]),
-                ..Default::default()
-            },
-            role_ref: RoleRef {
-                api_group: ClusterRole::group(&()).to_string(),
-                kind: ClusterRole::kind(&()).to_string(),
-                name: self.owner_cluster_role_name(),
-            },
-            subjects: Some(self.owners_as_subjects()),
-        };
-
-        (rolebinding, owner_cluster_role, owner_cluster_role_binding)
-    }
-
     // for each project a namespace is created and kubernetes resources are created within this
     // namespace. Project manifest can influence which resources get created (or skipped) via annotations:
     //
@@ -306,6 +212,8 @@ impl Project {
                     .context(missing_item_message.clone())?
                     .to_owned();
 
+                let manifest =
+                    String::from_utf8(manifest.to_owned().0).unwrap_or_else(|_| String::from(""));
                 let rendered_manifest = self.render(&manifest, data_item).context(format!(
                     "error rendering '{}' from secret '{}':",
                     data_item, reference.secret_name
@@ -322,8 +230,10 @@ impl Project {
                             continue;
                         }
 
+                        let manifest = String::from_utf8(manifest.to_owned().0)
+                            .unwrap_or_else(|_| String::from(""));
                         let rendered_manifest = self.render(
-                            manifest,
+                            &manifest,
                             &format!("{}/{}", reference.secret_name, data_item),
                         )?;
                         manifest_yaml_sources.push(rendered_manifest);
@@ -334,10 +244,7 @@ impl Project {
         Ok(manifest_yaml_sources)
     }
 
-    pub fn render(&self, template: &ByteString, name: &str) -> anyhow::Result<String> {
-        let template =
-            String::from_utf8(template.to_owned().0).unwrap_or_else(|_| String::from(""));
-
+    pub fn render(&self, template: &str, name: &str) -> anyhow::Result<String> {
         let mut template_data = match &self.spec.manifest_values {
             Some(values) => {
                 match serde_yaml::from_str(values) {

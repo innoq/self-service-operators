@@ -267,7 +267,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     );
 
     annotations.insert(
-        "project.selfservice.innoq.io/default-project-manifests.resource0".to_string(),
+        "project.selfservice.innoq.io/default-project-manifests".to_string(),
         "skip".to_string(),
     );
 

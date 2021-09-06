@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 
 use crate::self_service::project::states::error::Error;
 use crate::self_service::project::states::{
-    ProjectPhase, ProjectState, SetupRBACPermissions, SharedState,
+    ApplyManifests, ProjectPhase, ProjectState, SharedState,
 };
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
@@ -33,7 +33,7 @@ impl State<ProjectState> for CreateNamespace {
 
         if let Ok(namespace) = api.get(&name).await {
             if is_owned_by_project(&project, &namespace) {
-                return Transition::next(self, SetupRBACPermissions);
+                return Transition::next(self, ApplyManifests);
             } else {
                 state.error = format!(
                     "namespace '{}' exists but does not belong to project '{}'",
@@ -56,7 +56,7 @@ impl State<ProjectState> for CreateNamespace {
             state.error = format!("error creating namespace {}: {}", state.name, e.to_string());
             Transition::next(self, Error)
         } else {
-            Transition::next(self, SetupRBACPermissions)
+            Transition::next(self, ApplyManifests)
         }
     }
 

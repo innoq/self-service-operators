@@ -4,7 +4,7 @@ extern crate log;
 use std::time::Duration;
 use std::{convert::TryFrom, process::exit};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use clap::{crate_authors, crate_version, Clap};
 use env_logger::*;
 use krator::OperatorRuntime;
@@ -15,6 +15,8 @@ use noqnoqnoq::self_service::project::operator;
 use noqnoqnoq::self_service::project::project::DEFAULT_MANIFESTS_SECRET;
 use noqnoqnoq::self_service::project::Project;
 use noqnoqnoq::self_service::project::Sample;
+use std::fs::File;
+use std::io::Read;
 
 #[derive(Clap)]
 #[clap(
@@ -47,13 +49,13 @@ struct Opts {
     #[clap(short = 'm', long)]
     print_sample_project_manifest: bool,
 
+    /// Test manifest template: outputs the result of a given manifest template / project combination: expects <PROJECT.YAML>,<MANIFEST.YAML> (files separated by comma)
+    #[clap(short = 't', long)]
+    test_manifest_template: Option<String>,
+
     /// verbose level
     #[clap(short, long, default_value = "info", possible_values = &["debug", "info", "warn", "error"]) ]
     verbosity_level: String,
-
-    /// cluster role the owner of this project should get in the project namespace
-    #[clap(short, long, default_value = "admin")]
-    default_owner_cluster_role: String,
 }
 
 #[tokio::main]
@@ -89,6 +91,24 @@ async fn main() -> anyhow::Result<()> {
       "# self service sample project manifest (auto-generated with 'self-service-operator --print-sample-project-manifest'):\n{}\n",
       serde_yaml::to_string(&Project::sample()).unwrap()
     );
+        exit(0)
+    }
+
+    if let Some(files) = opts.test_manifest_template {
+        let filenames: Vec<&str> = files.split(",").collect();
+        if filenames.len() != 2 {
+            bail!("in order to check the templating of a manifest file, pass in a project resource yaml file and a template file, separated by a comman, e.g. --test-manifest-template project.yaml,manifest.yaml");
+        }
+
+        let project: Project = serde_yaml::from_reader(File::open(filenames[0])?)?;
+
+        let mut manifest_file = String::new();
+        File::open(filenames[1])?.read_to_string(&mut manifest_file)?;
+
+        let rendered_file = project.render(&manifest_file, filenames[1])?;
+
+        println!("{}", rendered_file);
+
         exit(0)
     }
 
@@ -129,7 +149,6 @@ async fn main() -> anyhow::Result<()> {
 
     let tracker = operator::ProjectOperator::new(
         client,
-        &opts.default_owner_cluster_role,
         &namespace,
         DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(5),

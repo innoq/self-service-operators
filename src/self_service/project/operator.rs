@@ -4,9 +4,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
-use anyhow::Context;
 use k8s_openapi::api::core::v1::{Namespace, Secret};
-use k8s_openapi::api::rbac::v1::ClusterRole;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ListMeta, Status};
 use krator::admission::{AdmissionResult, AdmissionTls};
 use krator::{Manifest, Operator};
@@ -26,14 +24,12 @@ pub struct ProjectOperator {
 impl ProjectOperator {
     pub async fn new(
         client: kube::Client,
-        default_owner_cluster_role: &str,
         default_ns: &str,
         default_manifests_secret: &str,
         manifest_retry_delay: Duration,
     ) -> anyhow::Result<Self> {
         let shared = Arc::new(RwLock::new(SharedState {
             client: client.clone(),
-            default_owner_cluster_role: default_owner_cluster_role.to_string(),
             default_ns: default_ns.to_string(),
             default_manifests_secret: default_manifests_secret.to_string(),
             manifest_retry_delay,
@@ -44,16 +40,6 @@ impl ProjectOperator {
                     "no Secret with name '{}' in namespace '{}' found (this secret should hold default manifests that get applied in each new namespace): {} -- aborting",
                     default_manifests_secret, default_ns, e);
         }
-
-        let _ = kube::Api::<ClusterRole>::all(client.clone())
-            .get(&default_owner_cluster_role)
-            .await
-            .with_context(|| {
-                format!(
-                    "no ClusterRole with name '{}' found -- aborting",
-                    default_owner_cluster_role
-                )
-            })?;
 
         Ok(ProjectOperator { shared })
     }

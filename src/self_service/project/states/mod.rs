@@ -9,7 +9,6 @@ pub(crate) use apply_manifests::ApplyManifests;
 pub(crate) use create_namespace::CreateNamespace;
 pub(crate) use error::Error;
 pub(crate) use released::Released;
-pub(crate) use setup_rbac_permissions::SetupRBACPermissions;
 pub(crate) use wait_for_changes::WaitForChanges;
 
 pub use crate::self_service::project::{
@@ -20,7 +19,6 @@ pub mod apply_manifests;
 mod create_namespace;
 mod error;
 mod released;
-mod setup_rbac_permissions;
 mod transitions;
 mod wait_for_changes;
 
@@ -51,7 +49,6 @@ impl ObjectState for ProjectState {
 pub struct SharedState {
     pub(crate) client: kube::Client,
     pub(crate) default_manifests_secret: String,
-    pub(crate) default_owner_cluster_role: String,
     pub(crate) default_ns: String,
     pub(crate) manifest_retry_delay: Duration,
 }

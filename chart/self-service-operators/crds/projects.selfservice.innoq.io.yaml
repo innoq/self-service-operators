@@ -3,12 +3,12 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: project.selfservice.innoq.io
+  name: projects.selfservice.innoq.io
 spec:
   group: selfservice.innoq.io
   names:
     kind: Project
-    plural: project
+    plural: projects
     shortNames:
       - ssp
     singular: project
@@ -44,16 +44,16 @@ spec:
               description: a self service project that will create a namespace per project with the owner having cluster-admin rights in this namespace
               properties:
                 manifestValues:
-                  additionalProperties:
-                    type: string
                   description: a map of values that should be templated into manifests that get created
                   nullable: true
-                  type: object
-                owner:
-                  description: Owner of this project -- this user will have cluster-admin rights within the created namespace it must be the user name of this user
                   type: string
+                owners:
+                  description: Owner of this project -- this user will have cluster-admin rights within the created namespace it must be the user name of this user
+                  items:
+                    type: string
+                  type: array
               required:
-                - owner
+                - owners
               type: object
             status:
               description: Reflects the status of the current self service project

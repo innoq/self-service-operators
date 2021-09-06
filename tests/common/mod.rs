@@ -34,7 +34,16 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
         apply_manifest_secret(
             &client,
             DEFAULT_MANIFESTS_SECRET,
-            vec![include_str!("../fixtures/pod.yaml")]
+            vec![
+                include_str!("../fixtures/pod.yaml"),
+                include_str!("../../manifests/default-project-manifests/owner-clusterrole.yaml"),
+                include_str!(
+                    "../../manifests/default-project-manifests/owner-clusterrolebinding.yaml"
+                ),
+                include_str!(
+                    "../../manifests/default-project-manifests/project-owner-role-binding.yaml"
+                ),
+            ]
         )
         .await
         .is_ok(),
@@ -46,7 +55,6 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
 
     let operator = operator::ProjectOperator::new(
         client.clone(),
-        "admin",
         "default",
         DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(1),
@@ -184,6 +192,16 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
     Ok(())
 }
 
+// TODO: this is just for nicer test output ...
+impl k8s_openapi::Resource for ProjectWrapper {
+    const GROUP: &'static str = "selfservice.innoq.io";
+    const API_VERSION: &'static str = "selfservice.innoq.io/v1";
+    const KIND: &'static str = "Project";
+    const VERSION: &'static str = "v1";
+}
+
+struct ProjectWrapper(Project);
+
 pub fn wait_for_state<K: 'static>(
     api: &kube::Api<K>,
     #[allow(clippy::ptr_arg)] name: &String,
@@ -191,7 +209,6 @@ pub fn wait_for_state<K: 'static>(
 ) -> JoinHandle<()>
 where
     K: std::fmt::Debug
-        + k8s_openapi::Resource
         + kube::Resource
         + Clone
         + std::marker::Send
@@ -203,7 +220,7 @@ where
     tokio::spawn(async move {
         debug!(
             "{} with name {} waiting for state {:?}",
-            K::KIND,
+            api.resource_url(),
             name,
             state
         );
@@ -240,7 +257,7 @@ where
                 debug!(
                     "  - {:?} for {} with name {} received",
                     e,
-                    K::KIND,
+                    api.resource_url(),
                     (resource.meta().clone() as ObjectMeta).name.unwrap(),
                 );
             }
@@ -274,7 +291,12 @@ where
                         }
                     }
                     WatchEvent::Error(e) => {
-                        debug!(" - ERROR watching {} with name {}: {:?}", K::KIND, name, e);
+                        debug!(
+                            " - ERROR watching {} with name {}: {:?}",
+                            api.resource_url(),
+                            name,
+                            e
+                        );
                     }
                 },
                 Ok(None) => {
@@ -286,7 +308,7 @@ where
 
                     debug!(
                         "  - too early to watch {} with name {} (event: {:?})",
-                        K::KIND,
+                        api.resource_url(),
                         &name,
                         &state
                     );
@@ -296,7 +318,7 @@ where
                 Err(e) => {
                     debug!(
                         " - ERROR getting {} with name {} from stream: {:?}",
-                        K::KIND,
+                        api.resource_url(),
                         name,
                         e
                     );
@@ -313,7 +335,6 @@ pub async fn install_project(
     #[allow(clippy::ptr_arg)] name: &String,
 ) -> anyhow::Result<Project> {
     let timeout_secs = 10;
-    let project_api: kube::Api<Project> = kube::Api::all(client.clone());
 
     let wait_for_namespace_created_handle = wait_for_state(
         &kube::Api::<Namespace>::all(client.clone()),
@@ -321,6 +342,7 @@ pub async fn install_project(
         WaitForState::Created,
     );
 
+    let project_api: kube::Api<Project> = kube::Api::all(client.clone());
     let wait_for_project_created_handle =
         wait_for_state(&project_api, &name, WaitForState::Created);
 
