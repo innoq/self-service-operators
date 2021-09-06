@@ -83,6 +83,12 @@ project_name: self-service-project
     }
 }
 
+#[derive(Clone)]
+struct ManifestReference {
+    secret_name: String,
+    data_item: Option<String>,
+}
+
 impl Project {
     // for each project a namespace is created and kubernetes resources are created within this
     // namespace. Project manifest can influence which resources get created (or skipped) via annotations:
@@ -104,86 +110,38 @@ impl Project {
         default_manifests_secret: &str,
         namespace: &str,
     ) -> anyhow::Result<Vec<String>> {
-        #[derive(Clone)]
-        struct ManifestReference {
-            secret_name: String,
-            data_item: Option<String>,
-        }
-
-        let mut manifest_references = vec![ManifestReference {
+        // always copy the default manifests
+        let mut copy_manifests_references = vec![ManifestReference {
             secret_name: default_manifests_secret.to_string(),
             data_item: None,
         }];
 
-        let mut skip_manifest_references = None;
+        let mut skip_manifests_references = vec![];
 
         if let Some(annotations) = &self.metadata.annotations {
-            let mut copy_manifests = annotations
-                .iter()
-                .filter(|(key, value)| {
-                    key.starts_with(COPY_ANNOTATION_BASE) && *value == COPY_ANNOTATION_COPY_VALUE
-                })
-                .map(|(ref key, _)| {
-                    let secret_and_item = key
-                        .to_string()
-                        .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
+            copy_manifests_references.append(&mut get_annotated_manifests(
+                annotations,
+                COPY_ANNOTATION_COPY_VALUE,
+            ));
 
-                    // we do a splitn here as the data item name can well contain a '.' ... therefore secret
-                    // names must not contain a '.' in their name (even thought it's allowed in kubernetes)
-                    let secret_and_item = secret_and_item.splitn(2, '.').collect::<Vec<_>>();
-
-                    ManifestReference {
-                        secret_name: secret_and_item[0].to_string(),
-                        data_item: secret_and_item.get(1).map(|x| x.to_string()),
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            manifest_references.append(&mut copy_manifests);
-
-            let skip_manifests = annotations
-                .iter()
-                .filter(|(key, value)| {
-                    key.starts_with(COPY_ANNOTATION_BASE) && *value == COPY_ANNOTATION_SKIP_VALUE
-                })
-                .map(|(ref key, _)| {
-                    let secret_and_item = key
-                        .to_string()
-                        .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
-                    let secret_and_item = secret_and_item.splitn(2, '.').collect::<Vec<_>>();
-
-                    ManifestReference {
-                        secret_name: secret_and_item[0].to_string(),
-                        data_item: secret_and_item.get(1).map(|x| x.to_string()),
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            if !skip_manifests.is_empty() {
-                skip_manifest_references = Some(skip_manifests);
-            }
+            skip_manifests_references =
+                get_annotated_manifests(annotations, COPY_ANNOTATION_SKIP_VALUE);
         }
 
         let api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), namespace);
 
         let skip = |reference: &ManifestReference| -> bool {
-            if let Some(ref skip_manifest_references) = skip_manifest_references {
-                if skip_manifest_references
-                    .iter()
-                    .any(|skip_manifest_reference| {
-                        reference.secret_name == skip_manifest_reference.secret_name
-                            && (reference.data_item == skip_manifest_reference.data_item
-                                || skip_manifest_reference.data_item == None)
-                    })
-                {
-                    return true;
-                }
-            }
-            false
+            skip_manifests_references
+                .iter()
+                .any(|skip_manifest_reference| {
+                    reference.secret_name == skip_manifest_reference.secret_name
+                        && (reference.data_item == skip_manifest_reference.data_item
+                            || skip_manifest_reference.data_item == None) // no data item == skip all data items of this secret
+                })
         };
 
         let mut manifest_yaml_sources = vec![];
-        for reference in manifest_references.iter() {
+        for reference in copy_manifests_references.iter() {
             if skip(reference) {
                 continue;
             }
@@ -232,6 +190,7 @@ impl Project {
 
                         let manifest = String::from_utf8(manifest.to_owned().0)
                             .unwrap_or_else(|_| String::from(""));
+
                         let rendered_manifest = self.render(
                             &manifest,
                             &format!("{}/{}", reference.secret_name, data_item),
@@ -378,6 +337,30 @@ impl ObjectStatus for ProjectStatus {
             phase: None,
         }
     }
+}
+
+fn get_annotated_manifests(
+    annotations: &BTreeMap<String, String>,
+    annotation_value: &str,
+) -> Vec<ManifestReference> {
+    annotations
+        .iter()
+        .filter(|(key, value)| key.starts_with(COPY_ANNOTATION_BASE) && *value == annotation_value)
+        .map(|(ref key, _)| {
+            let secret_and_item = key
+                .to_string()
+                .replace(&format!("{}/", COPY_ANNOTATION_BASE), "");
+
+            // we do a splitn here as the data item name can well contain a '.' ... therefore secret
+            // names must not contain a '.' in their name (even though it's allowed in kubernetes)
+            let secret_and_item = secret_and_item.splitn(2, '.').collect::<Vec<_>>();
+
+            ManifestReference {
+                secret_name: secret_and_item[0].to_string(),
+                data_item: secret_and_item.get(1).map(|x| x.to_string()),
+            }
+        })
+        .collect::<Vec<_>>()
 }
 
 pub trait Sample {

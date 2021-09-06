@@ -14,6 +14,7 @@ use crate::self_service::project::states::{Error, SharedState};
 use crate::self_service::project::states::{ProjectPhase, ProjectState, WaitForChanges};
 use crate::self_service::project::Project;
 use crate::self_service::project::ProjectStatus;
+use std::ops::Mul;
 
 #[derive(Debug, Default)]
 pub(crate) struct ApplyManifests;
@@ -63,9 +64,13 @@ impl State<ProjectState> for ApplyManifests {
                             );
                             return Transition::next(self, Error);
                         }
+
+                        // pause between each iteration with backoff factor, so resources that were
+                        // applied can get available -- this might be necessary if some resources
+                        // depend on others
                         if i != iteration_counter {
                             iteration_counter = i;
-                            tokio::time::sleep(delay).await;
+                            tokio::time::sleep(delay.mul(i.into())).await;
                         }
                         manifests.insert(0, (i + 1, &manifest));
                     }
@@ -107,6 +112,7 @@ pub async fn apply_yaml_manifest(
 
     let request;
     if client.request_text(get_request).await.is_ok() {
+        // update resource
         request = Request::builder()
             .uri(format!(
                 "{}?fieldManager=self-service-operator&force=true",
@@ -117,6 +123,7 @@ pub async fn apply_yaml_manifest(
             .body(manifest.into())
             .unwrap();
     } else {
+        // create resource
         let path = Path::new(&path).parent().unwrap();
         request = Request::builder()
             .uri(format!(
@@ -151,11 +158,19 @@ pub fn add_owner_to_yaml_manifest(
 }
 
 pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow::Result<String> {
+    #[derive(Debug, PartialEq, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ResourceInfo {
+        metadata: ObjectMeta,
+        api_version: String,
+        kind: String,
+    }
+
     let resource_info: ResourceInfo = serde_yaml::from_str(yaml_manifest)?;
 
     let is_core_api_resource = !resource_info.api_version.contains('/');
 
-    let available_resources = if is_core_api_resource {
+    let available_resources_in_current_cluster = if is_core_api_resource {
         client
             .list_core_api_resources(&(resource_info.api_version))
             .await?
@@ -165,7 +180,7 @@ pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow
             .await?
     };
 
-    let resource = available_resources
+    let resource = available_resources_in_current_cluster
         .resources
         .into_iter()
         .find(|resource| resource.kind == resource_info.kind)
@@ -176,7 +191,7 @@ pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow
             )
         })?;
 
-    let namespace_specifier = if resource.namespaced {
+    let namespace_sub_path = if resource.namespaced {
         ensure!(
             resource_info.metadata.namespace.is_some(),
             "setting namespace is required: resource {}/{} with name '{}' has no namespace set ... in most cases you want to set it to {{{{ __PROJECT_NAME__ }}}}\nManifest is: {}",
@@ -192,27 +207,19 @@ pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow
 
     if is_core_api_resource {
         Ok(format!(
-            "/api/{version}/{namespace_specifier}{resource}/{name}",
+            "/api/{version}/{namespace_sub_path}{resource}/{name}",
             version = &resource_info.api_version,
-            namespace_specifier = namespace_specifier,
+            namespace_sub_path = namespace_sub_path,
             resource = &resource.name,
             name = resource_info.metadata.name.unwrap()
         ))
     } else {
         Ok(format!(
-            "/apis/{api_version}/{namespace_specifier}{resource}/{name}",
+            "/apis/{api_version}/{namespace_sub_path}{resource}/{name}",
             api_version = &resource_info.api_version,
-            namespace_specifier = namespace_specifier,
+            namespace_sub_path = namespace_sub_path,
             resource = &resource.name,
             name = resource_info.metadata.name.unwrap()
         ))
     }
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ResourceInfo {
-    metadata: ObjectMeta,
-    api_version: String,
-    kind: String,
 }

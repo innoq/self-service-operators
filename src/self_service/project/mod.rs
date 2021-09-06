@@ -1,5 +1,6 @@
 pub mod operator;
 pub mod project;
+mod project_status;
 pub mod states;
 
 pub use project::{Project, ProjectSpec, ProjectStatus, Sample};
