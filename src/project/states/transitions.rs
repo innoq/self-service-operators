@@ -1,8 +1,6 @@
 use krator::TransitionTo;
 
-use crate::self_service::project::states::{
-    ApplyManifests, CreateNamespace, Error, WaitForChanges,
-};
+use crate::project::states::{ApplyManifests, CreateNamespace, Error, WaitForChanges};
 
 impl TransitionTo<ApplyManifests> for CreateNamespace {}
 impl TransitionTo<Error> for CreateNamespace {}

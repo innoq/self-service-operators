@@ -11,10 +11,10 @@ use krator::OperatorRuntime;
 use log::LevelFilter;
 pub use schemars::JsonSchema;
 
-use self_service_operators::self_service::project::operator;
-use self_service_operators::self_service::project::project::DEFAULT_MANIFESTS_SECRET;
-use self_service_operators::self_service::project::Project;
-use self_service_operators::self_service::project::Sample;
+use self_service_operators::project::operator;
+use self_service_operators::project::project::DEFAULT_MANIFESTS_SECRET;
+use self_service_operators::project::Project;
+use self_service_operators::project::Sample;
 use std::fs::File;
 use std::io::Read;
 

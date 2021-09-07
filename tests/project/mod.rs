@@ -1,31 +1,32 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{convert::TryFrom, path::Path};
+use tokio::{select, time};
+use log::debug;
 
 use futures::{StreamExt, TryStreamExt};
-use k8s::api::core::v1::Secret;
-use k8s::api::{admissionregistration::v1::MutatingWebhookConfiguration, core::v1::Service};
-use k8s_openapi as k8s;
-use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::api::admissionregistration::v1::MutatingWebhookConfiguration;
+use k8s_openapi::api::core::v1::{Namespace, Secret, Service};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use krator::OperatorRuntime;
-use kube::api::{self, DeleteParams, Patch, PatchParams};
-use kube::api::{PostParams, WatchEvent};
-use kube::{config, Client};
-use log::debug;
-use tokio::select;
+use kube::{api, Client, config};
+use kube::api::{DeleteParams, Patch, PatchParams, PostParams, WatchEvent};
 use tokio::task::JoinHandle;
-use tokio::time;
 
-use self_service_operators::self_service::project::operator;
-use self_service_operators::self_service::project::operator::ProjectOperator;
-use self_service_operators::self_service::project::project::{
-    DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
-};
-use self_service_operators::self_service::project::Project;
-use self_service_operators::self_service::project::ProjectSpec;
-use self_service_operators::self_service::project::Sample;
+use self_service_operators::project::operator::ProjectOperator;
+use self_service_operators::project::project::{DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE};
+use self_service_operators::project::{ProjectSpec, Sample};
+
+use self_service_operators::project::Project;
+use std::convert::TryFrom;
+
+mod admission_webhook_tests;
+mod manifest_secrets;
+mod operator;
+mod project;
+mod states;
+mod yaml_manifest_parsing;
 
 pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let (config, client) = get_client().await?;
@@ -53,7 +54,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     // there is probably a better way FnOnce?
     let _ = reinstall_self_service_crd(&client).await?;
 
-    let operator = operator::ProjectOperator::new(
+    let operator = self_service_operators::project::operator::ProjectOperator::new(
         client.clone(),
         "default",
         DEFAULT_MANIFESTS_SECRET,
@@ -84,63 +85,6 @@ pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error>
         "communication with kubernetes should work"
     );
     Ok((config, client))
-}
-
-pub async fn apply_manifest_secret(
-    client: &kube::Client,
-    name: &str,
-    manifests: Vec<&str>,
-) -> anyhow::Result<(), anyhow::Error> {
-    let api = kube::Api::<Secret>::namespaced(client.clone(), "default");
-
-    if api.get(name).await.is_ok() {
-        api.delete(
-            name,
-            &DeleteParams {
-                ..Default::default()
-            },
-        )
-        .await?;
-    }
-
-    let wait_for_secret_created_handle = wait_for_state(
-        &kube::Api::<Secret>::all(client.clone()),
-        &name.to_string(),
-        WaitForState::Updated,
-    );
-
-    let mut annotations = BTreeMap::new();
-    annotations.insert(
-        SECRET_ANNOTATION_KEY.to_string(),
-        SECRET_ANNOTATION_VALUE.to_string(),
-    );
-
-    let mut secret_items = BTreeMap::new();
-    manifests.iter().enumerate().for_each(|(i, manifest)| {
-        secret_items.insert(format!("resource{}", i), manifest.to_string());
-    });
-
-    api.patch(
-        name,
-        &PatchParams {
-            force: false,
-            field_manager: Some("operator-test".to_string()),
-            ..Default::default()
-        },
-        &Patch::Apply(&Secret {
-            data: None,
-            string_data: Some(secret_items),
-            metadata: ObjectMeta {
-                name: Some(name.to_string()),
-                annotations: Some(annotations),
-                ..Default::default()
-            },
-            ..Default::default()
-        }),
-    )
-    .await?;
-    let _ = wait_for_secret_created_handle.await;
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -191,16 +135,6 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
 
     Ok(())
 }
-
-// TODO: this is just for nicer test output ...
-impl k8s_openapi::Resource for ProjectWrapper {
-    const GROUP: &'static str = "selfservice.innoq.io";
-    const API_VERSION: &'static str = "selfservice.innoq.io/v1";
-    const KIND: &'static str = "Project";
-    const VERSION: &'static str = "v1";
-}
-
-struct ProjectWrapper(Project);
 
 pub fn wait_for_state<K: 'static>(
     api: &kube::Api<K>,
@@ -435,7 +369,7 @@ pub async fn assert_project_is_in_waiting_state(client: &Client, name: &str) -> 
 
     let api: kube::Api<Project> = kube::Api::all(client.clone());
     for _ in 0..60 {
-        let _ = time::sleep(Duration::from_secs(1)).await;
+        let _ = tokio::time::sleep(Duration::from_secs(1)).await;
         let project = api.get(&name).await?;
         if project.status.clone().unwrap().summary.is_none() {
             continue;
@@ -452,4 +386,61 @@ pub async fn assert_project_is_in_waiting_state(client: &Client, name: &str) -> 
         "project should be in waiting state -- last summary was: {}",
         last_summary
     );
+}
+
+pub async fn apply_manifest_secret(
+    client: &kube::Client,
+    name: &str,
+    manifests: Vec<&str>,
+) -> anyhow::Result<(), anyhow::Error> {
+    let api = kube::Api::<Secret>::namespaced(client.clone(), "default");
+
+    if api.get(name).await.is_ok() {
+        api.delete(
+            name,
+            &DeleteParams {
+                ..Default::default()
+            },
+        )
+        .await?;
+    }
+
+    let wait_for_secret_created_handle = wait_for_state(
+        &kube::Api::<Secret>::all(client.clone()),
+        &name.to_string(),
+        WaitForState::Updated,
+    );
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        SECRET_ANNOTATION_KEY.to_string(),
+        SECRET_ANNOTATION_VALUE.to_string(),
+    );
+
+    let mut secret_items = BTreeMap::new();
+    manifests.iter().enumerate().for_each(|(i, manifest)| {
+        secret_items.insert(format!("resource{}", i), manifest.to_string());
+    });
+
+    api.patch(
+        name,
+        &PatchParams {
+            force: false,
+            field_manager: Some("operator-test".to_string()),
+            ..Default::default()
+        },
+        &Patch::Apply(&Secret {
+            data: None,
+            string_data: Some(secret_items),
+            metadata: ObjectMeta {
+                name: Some(name.to_string()),
+                annotations: Some(annotations),
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+    )
+    .await?;
+    let _ = wait_for_secret_created_handle.await;
+    Ok(())
 }

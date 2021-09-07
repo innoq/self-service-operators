@@ -8,22 +8,22 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use self_service_operators::self_service::project::{operator, Sample};
-use self_service_operators::self_service::project::{Project, ProjectSpec};
-
-use crate::common;
-use crate::common::WaitForState;
-use self_service_operators::self_service::project::project::{
+use self_service_operators::project::{operator, Sample};
+use self_service_operators::project::{Project, ProjectSpec};
+use self_service_operators::project::project::{
     DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
 };
+
+use crate::{project};
+use crate::project::WaitForState;
 
 #[tokio::test]
 #[serial]
 async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
+    let (client, _) = project::before_each().await?;
 
-    let name = common::random_name("secret-annotations");
-    let _ = common::install_project(&client, &name).await?;
+    let name = project::random_name("secret-annotations");
+    let _ = project::install_project(&client, &name).await?;
 
     let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
 
@@ -80,7 +80,7 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     assert!(resources.is_ok());
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -92,18 +92,18 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
 #[tokio::test]
 #[serial]
 async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
+    let (client, _) = project::before_each().await?;
 
-    let name = common::random_name("copy-default-secrets-manifests");
+    let name = project::random_name("copy-default-secrets-manifests");
     let timeout_secs = 20;
 
-    let wait_for_pod_created_handle = common::wait_for_state(
+    let wait_for_pod_created_handle = project::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"foo".to_string(),
         WaitForState::Created,
     );
 
-    let _ = common::install_project(&client, &name).await?;
+    let _ = project::install_project(&client, &name).await?;
     assert!(
         select! {
         res = wait_for_pod_created_handle => res.is_ok(),
@@ -115,7 +115,7 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
     );
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -127,24 +127,24 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
 #[tokio::test]
 #[serial]
 async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Result<()> {
-    let (client, _operator) = common::before_each().await?;
-    common::apply_manifest_secret(
+    let (client, _operator) = project::before_each().await?;
+    project::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../../fixtures/templated-pod.yaml")],
+        vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("copy-and-template-default-secrets-manifests");
+    let name = project::random_name("copy-and-template-default-secrets-manifests");
     let timeout_secs = 20;
 
-    let wait_for_pod_created_handle = common::wait_for_state(
+    let wait_for_pod_created_handle = project::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"templated-name".to_string(),
         WaitForState::Created,
     );
 
-    let _ = common::install_project(&client, &name).await?;
+    let _ = project::install_project(&client, &name).await?;
     assert!(
 		select! {
 		res = wait_for_pod_created_handle => res.is_ok(),
@@ -156,7 +156,7 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
 	);
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -168,15 +168,15 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
 #[tokio::test]
 #[serial]
 async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
-    let (client, _operator) = common::before_each().await?;
-    common::apply_manifest_secret(
+    let (client, _operator) = project::before_each().await?;
+    project::apply_manifest_secret(
         &client,
         "extra-manifests",
-        vec![include_str!("../../fixtures/templated-pod.yaml")],
+        vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("copy-annotated-manifest");
+    let name = project::random_name("copy-annotated-manifest");
     let timeout_secs = 20;
 
     let manifest_values = "name: extra-pod";
@@ -203,14 +203,14 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
         .create(&PostParams::default(), &project)
         .await?;
 
-    common::wait_for_state(
+    project::wait_for_state(
         &kube::Api::<Namespace>::all(client.clone()),
         &name,
         WaitForState::Created,
     )
     .await?;
 
-    let wait_for_pod_created_handle = common::wait_for_state(
+    let wait_for_pod_created_handle = project::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"extra-pod".to_string(),
         WaitForState::Created,
@@ -227,7 +227,7 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     );
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -239,15 +239,15 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
 #[tokio::test]
 #[serial]
 async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
-    let (client, _operator) = common::before_each().await?;
-    common::apply_manifest_secret(
+    let (client, _operator) = project::before_each().await?;
+    project::apply_manifest_secret(
         &client,
         "extra-manifests",
-        vec![include_str!("../../fixtures/templated-pod.yaml")],
+        vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("skip-annotated-manifest");
+    let name = project::random_name("skip-annotated-manifest");
 
     let manifest_values = "- name: extra-pod";
 

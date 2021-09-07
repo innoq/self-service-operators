@@ -9,20 +9,20 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use self_service_operators::self_service::project::Project;
+use self_service_operators::project::Project;
 
-use crate::common;
-use crate::common::WaitForState;
+use crate::{project};
+use crate::project::WaitForState;
 
 #[tokio::test]
 #[serial]
 async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project(
 ) -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
+    let (client, _) = project::before_each().await?;
     let timeout_secs = 60;
-    let name = common::random_name("owner-cluster-role-test");
+    let name = project::random_name("owner-cluster-role-test");
 
-    let project = common::install_project(&client, &name).await?;
+    let project = project::install_project(&client, &name).await?;
 
     let cr_api = kube::Api::<ClusterRole>::all(client.clone());
     let crb_api = kube::Api::<ClusterRoleBinding>::all(client.clone());
@@ -30,10 +30,10 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     let resource_name = format!("selfservice:project:owner:{}", name);
 
     let wait_for_clusterrole_created_handle =
-        common::wait_for_state(&cr_api, &resource_name, WaitForState::Created);
+        project::wait_for_state(&cr_api, &resource_name, WaitForState::Created);
 
     let wait_for_clusterrolebinding_created_handle =
-        common::wait_for_state(&crb_api, &resource_name, WaitForState::Created);
+        project::wait_for_state(&crb_api, &resource_name, WaitForState::Created);
 
     assert!(
         select! {
@@ -55,7 +55,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 
     let cr = cr_api.get(&resource_name).await?;
     assert!(
-        common::assert_is_owned_by_project(&project, &cr).is_ok(),
+        project::assert_is_owned_by_project(&project, &cr).is_ok(),
         "owner cluster role should be owned by project"
     );
 
@@ -93,7 +93,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 
     let crb = crb_api.get(&*resource_name).await?;
     assert!(
-        common::assert_is_owned_by_project(&project, &crb).is_ok(),
+        project::assert_is_owned_by_project(&project, &crb).is_ok(),
         "owner cluster role binding should be owned by project"
     );
 
@@ -124,7 +124,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     );
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -136,16 +136,16 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 #[tokio::test]
 #[serial]
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
+    let (client, _) = project::before_each().await?;
     let timeout_secs = 6;
-    let name = common::random_name("rolebinding-test");
+    let name = project::random_name("rolebinding-test");
 
-    let project = common::install_project(&client, &name).await?;
+    let project = project::install_project(&client, &name).await?;
     let resource_name = "selfservice:project:owner";
 
     let api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
     let wait_for_rolebinding_created_handle =
-        common::wait_for_state(&api, &resource_name.to_string(), WaitForState::Created);
+        project::wait_for_state(&api, &resource_name.to_string(), WaitForState::Created);
 
     assert!(
         select! {
@@ -159,7 +159,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let rb = api.get(resource_name).await?;
 
     assert!(
-        common::assert_is_owned_by_project(&project, &rb).is_ok(),
+        project::assert_is_owned_by_project(&project, &rb).is_ok(),
         "owner role binding should be owned by project"
     );
 
@@ -202,7 +202,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
     );
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"

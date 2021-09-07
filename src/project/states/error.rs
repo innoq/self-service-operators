@@ -3,10 +3,9 @@ use std::sync::Arc;
 use krator::{Manifest, State, Transition};
 use tokio::sync::RwLock;
 
-use crate::self_service;
-use crate::self_service::project::project_status::ProjectStatus;
-use crate::self_service::project::states::{ProjectPhase, ProjectState, SharedState};
-use crate::self_service::project::Project;
+use crate::project::project_status::ProjectStatus;
+use crate::project::states::{ProjectPhase, ProjectState, SharedState};
+use crate::project::Project;
 
 #[derive(Debug, Default)]
 /// Something went wrong
@@ -36,7 +35,7 @@ impl State<ProjectState> for Error {
         let message = format!("error: {}", state.error);
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::FailedDueToError),
-            summary: Some(self_service::project::shorten_string(&message)),
+            summary: Some(crate::project::shorten_string(&message)),
             message: Some(message),
         })
     }

@@ -3,24 +3,24 @@ use std::time::Duration;
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::PostParams;
+use serial_test::serial;
 use tokio::time;
 
-use crate::common;
+use self_service_operators::project::{Project, ProjectSpec, Sample};
 
-use self_service_operators::self_service::project::{Project, ProjectSpec, Sample};
-use serial_test::serial;
+use crate::{project};
 
 #[tokio::test]
 #[serial]
 async fn it_fails_with_correct_error_state_when_invalid_manifests_are_used() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
+    let (client, _) = project::before_each().await?;
 
-    let name = common::random_name("fail-with-invalid-manifests");
+    let name = project::random_name("fail-with-invalid-manifests");
 
-    common::apply_manifest_secret(
+    project::apply_manifest_secret(
         &client,
         "extra-manifests",
-        vec![include_str!("../../../fixtures/invalid.yaml")],
+        vec![include_str!("../../fixtures/invalid.yaml")],
     )
     .await?;
 

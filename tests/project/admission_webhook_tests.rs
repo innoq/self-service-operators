@@ -1,25 +1,27 @@
-use crate::common;
 use core::default::Default;
 use core::option::Option::Some;
 use core::result::Result::Ok;
+use std::collections::BTreeMap;
+
 use krator::admission::AdmissionResult;
 use krator::Operator;
 use kube::Resource;
+use serial_test::serial;
 
-use self_service_operators::self_service::project::project::{
+use self_service_operators::project::project::{
     COPY_ANNOTATION_BASE, COPY_ANNOTATION_COPY_VALUE, DEFAULT_MANIFESTS_SECRET,
 };
-use self_service_operators::self_service::project::Project;
-use serial_test::serial;
-use std::collections::BTreeMap;
+use self_service_operators::project::Project;
+
+use crate::{project};
 
 #[tokio::test]
 #[serial]
 async fn it_should_be_possible_to_update_projects() -> anyhow::Result<()> {
-    let (client, operator) = common::before_each().await?;
+    let (client, operator) = project::before_each().await?;
 
-    let name = common::random_name("update-project-test");
-    let _ = common::install_project(&client, &name).await?;
+    let name = project::random_name("update-project-test");
+    let _ = project::install_project(&client, &name).await?;
 
     let project = Project::new(&name, Default::default());
 
@@ -36,7 +38,7 @@ async fn it_should_be_possible_to_update_projects() -> anyhow::Result<()> {
 #[serial]
 async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_operator(
 ) -> anyhow::Result<()> {
-    let (_, operator) = common::before_each().await?;
+    let (_, operator) = project::before_each().await?;
 
     let project = Project::new("default", Default::default());
 
@@ -65,9 +67,9 @@ async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_
 #[tokio::test]
 #[serial]
 async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> anyhow::Result<()> {
-    let (_, operator) = common::before_each().await?;
+    let (_, operator) = project::before_each().await?;
 
-    let name = common::random_name("missing-secret");
+    let name = project::random_name("missing-secret");
     let mut project = Project::new(&name, Default::default());
 
     let mut meta_data = project.meta_mut();
@@ -101,9 +103,9 @@ async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> 
 #[tokio::test]
 #[serial]
 async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyhow::Result<()> {
-    let (_, operator) = common::before_each().await?;
+    let (_, operator) = project::before_each().await?;
 
-    let name = common::random_name("missing-secret-item");
+    let name = project::random_name("missing-secret-item");
     let mut project = Project::new(&name, Default::default());
 
     let mut meta_data = project.meta_mut();
@@ -137,16 +139,16 @@ async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyh
 #[tokio::test]
 #[serial]
 async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
-    let (client, operator) = common::before_each().await?;
+    let (client, operator) = project::before_each().await?;
 
-    common::apply_manifest_secret(
+    project::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../../fixtures/templated-pod.yaml")],
+        vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("missing-template-val");
+    let name = project::random_name("missing-template-val");
     let project = Project::new(&name, Default::default());
 
     let result = operator.admission_hook(project).await;
@@ -168,16 +170,16 @@ async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
 #[tokio::test]
 #[serial]
 async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Result<()> {
-    let (client, operator) = common::before_each().await?;
+    let (client, operator) = project::before_each().await?;
 
-    common::apply_manifest_secret(
+    project::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../../fixtures/pod.yaml")],
+        vec![include_str!("../fixtures/pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("missing-template-val");
+    let name = project::random_name("missing-template-val");
     let mut project = Project::new(&name, Default::default());
     project.spec.manifest_values = Some("foo: -".into());
 
@@ -197,16 +199,16 @@ async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Res
 #[tokio::test]
 #[serial]
 async fn it_should_fail_if_manifest_values_is_just_a_simple_string() -> anyhow::Result<()> {
-    let (client, operator) = common::before_each().await?;
+    let (client, operator) = project::before_each().await?;
 
-    common::apply_manifest_secret(
+    project::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../../fixtures/pod.yaml")],
+        vec![include_str!("../fixtures/pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("missing-template-val");
+    let name = project::random_name("missing-template-val");
     let mut project = Project::new(&name, Default::default());
     project.spec.manifest_values = Some("baaam".into());
 
@@ -226,16 +228,16 @@ async fn it_should_fail_if_manifest_values_is_just_a_simple_string() -> anyhow::
 #[tokio::test]
 #[serial]
 async fn it_should_fail_if_manifest_values_is_an_array() -> anyhow::Result<()> {
-    let (client, operator) = common::before_each().await?;
+    let (client, operator) = project::before_each().await?;
 
-    common::apply_manifest_secret(
+    project::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
-        vec![include_str!("../../fixtures/pod.yaml")],
+        vec![include_str!("../fixtures/pod.yaml")],
     )
     .await?;
 
-    let name = common::random_name("missing-template-val");
+    let name = project::random_name("missing-template-val");
     let mut project = Project::new(&name, Default::default());
     project.spec.manifest_values = Some("[1,2]".into());
 

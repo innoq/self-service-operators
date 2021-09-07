@@ -5,11 +5,11 @@ use krator::{Manifest, State, Transition};
 use kube::api::{ListParams, WatchEvent};
 use tokio::sync::RwLock;
 
-use crate::self_service::project::project_status::ProjectStatus;
-use crate::self_service::project::states::create_namespace::CreateNamespace;
-use crate::self_service::project::states::error::Error;
-use crate::self_service::project::states::{ProjectPhase, ProjectState, SharedState};
-use crate::self_service::project::Project;
+use crate::project::project_status::ProjectStatus;
+use crate::project::states::create_namespace::CreateNamespace;
+use crate::project::states::error::Error;
+use crate::project::states::{ProjectPhase, ProjectState, SharedState};
+use crate::project::Project;
 
 #[derive(Debug, Default)]
 /// Project is sleeping.

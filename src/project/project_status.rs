@@ -2,8 +2,7 @@ use krator::ObjectStatus;
 
 pub use schemars::JsonSchema;
 
-use crate::self_service;
-use crate::self_service::project::states::ProjectPhase;
+use crate::project::states::ProjectPhase;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
@@ -40,7 +39,7 @@ impl ObjectStatus for ProjectStatus {
     fn failed(e: &str) -> ProjectStatus {
         let message = format!("error: {}", e);
         ProjectStatus {
-            summary: Some(self_service::project::shorten_string(&message)),
+            summary: Some(crate::project::shorten_string(&message)),
             message: Some(message),
             phase: None,
         }

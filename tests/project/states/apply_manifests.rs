@@ -8,27 +8,27 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use self_service_operators::self_service::project::Sample;
-use self_service_operators::self_service::project::{Project, ProjectSpec};
+use self_service_operators::project::{Project, ProjectSpec};
+use self_service_operators::project::Sample;
 
-use crate::common;
-use crate::common::WaitForState;
+use crate::{project};
+use crate::project::WaitForState;
 
 #[tokio::test]
 #[serial]
 async fn it_should_eventually_install_correctly_rendered_manifests() -> anyhow::Result<()> {
-    let (client, _) = common::before_each().await?;
+    let (client, _) = project::before_each().await?;
 
-    let name = common::random_name("install-manifests");
+    let name = project::random_name("install-manifests");
     let timeout_secs = 20;
 
-    common::apply_manifest_secret(
+    project::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![
-            include_str!("../../../fixtures/pod-sa.yaml"),
-            include_str!("../../../fixtures/sa.yaml"),
-            include_str!("../../../fixtures/config-map.yaml"),
+            include_str!("../../fixtures/pod-sa.yaml"),
+            include_str!("../../fixtures/sa.yaml"),
+            include_str!("../../fixtures/config-map.yaml"),
         ],
     )
     .await?;
@@ -66,7 +66,7 @@ array:
     let api: kube::Api<Project> = kube::Api::all(client.clone());
     let _ = api.create(&PostParams::default(), &project).await;
 
-    let wait_for_pod_created_handle = common::wait_for_state(
+    let wait_for_pod_created_handle = project::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"pod-sa".to_string(),
         WaitForState::Created,
@@ -119,7 +119,7 @@ array:
     );
 
     assert!(
-        common::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_waiting_state(&client, &name)
             .await
             .is_ok(),
         "project should be in waiting state"

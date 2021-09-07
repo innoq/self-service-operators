@@ -11,8 +11,8 @@ pub(crate) use error::Error;
 pub(crate) use released::Released;
 pub(crate) use wait_for_changes::WaitForChanges;
 
-pub use crate::self_service::project::project_status::ProjectStatus;
-pub use crate::self_service::project::{project::DEFAULT_MANIFESTS_SECRET, Project, ProjectSpec};
+pub use crate::project::project_status::ProjectStatus;
+pub use crate::project::{project::DEFAULT_MANIFESTS_SECRET, Project, ProjectSpec};
 
 pub mod apply_manifests;
 mod create_namespace;

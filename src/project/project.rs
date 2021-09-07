@@ -13,7 +13,7 @@ pub use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::self_service::project::ProjectStatus;
+use crate::project::ProjectStatus;
 
 pub const SECRET_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/operator-access";
 pub const SECRET_ANNOTATION_VALUE: &str = "grant";
