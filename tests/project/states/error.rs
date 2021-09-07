@@ -8,7 +8,7 @@ use tokio::time;
 
 use self_service_operators::project::{Project, ProjectSpec, Sample};
 
-use crate::{project};
+use crate::project;
 
 #[tokio::test]
 #[serial]

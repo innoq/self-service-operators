@@ -1,13 +1,13 @@
 use core::option::Option::None;
 use core::result::Result::{Err, Ok};
 
-use kube::{Resource, ResourceExt};
 use kube::api::PostParams;
+use kube::{Resource, ResourceExt};
 use serial_test::serial;
 
 use self_service_operators::project::{Project, ProjectSpec};
 
-use crate::{project};
+use crate::project;
 
 #[tokio::test]
 #[serial]

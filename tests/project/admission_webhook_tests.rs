@@ -13,7 +13,7 @@ use self_service_operators::project::project::{
 };
 use self_service_operators::project::Project;
 
-use crate::{project};
+use crate::project;
 
 #[tokio::test]
 #[serial]

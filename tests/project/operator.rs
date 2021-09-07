@@ -4,7 +4,7 @@ use serial_test::serial;
 
 use self_service_operators::project::operator;
 
-use crate::{project};
+use crate::project;
 
 #[tokio::test]
 #[serial]

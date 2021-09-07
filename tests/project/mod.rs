@@ -1,8 +1,8 @@
+use log::debug;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::{select, time};
-use log::debug;
 
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::admissionregistration::v1::MutatingWebhookConfiguration;
@@ -10,12 +10,14 @@ use k8s_openapi::api::core::v1::{Namespace, Secret, Service};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use krator::OperatorRuntime;
-use kube::{api, Client, config};
 use kube::api::{DeleteParams, Patch, PatchParams, PostParams, WatchEvent};
+use kube::{api, config, Client};
 use tokio::task::JoinHandle;
 
 use self_service_operators::project::operator::ProjectOperator;
-use self_service_operators::project::project::{DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE};
+use self_service_operators::project::project::{
+    DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
+};
 use self_service_operators::project::{ProjectSpec, Sample};
 
 use self_service_operators::project::Project;

@@ -8,13 +8,13 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use self_service_operators::project::{operator, Sample};
-use self_service_operators::project::{Project, ProjectSpec};
 use self_service_operators::project::project::{
     DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
 };
+use self_service_operators::project::{operator, Sample};
+use self_service_operators::project::{Project, ProjectSpec};
 
-use crate::{project};
+use crate::project;
 use crate::project::WaitForState;
 
 #[tokio::test]

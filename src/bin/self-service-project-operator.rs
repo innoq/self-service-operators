@@ -95,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(files) = opts.test_manifest_template {
-        let filenames: Vec<&str> = files.split(",").collect();
+        let filenames: Vec<&str> = files.split(',').collect();
         if filenames.len() != 2 {
             bail!("in order to check the templating of a manifest file, pass in a project resource yaml file and a template file, separated by a comman, e.g. --test-manifest-template project.yaml,manifest.yaml");
         }

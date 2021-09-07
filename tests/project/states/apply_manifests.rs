@@ -8,10 +8,10 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use self_service_operators::project::{Project, ProjectSpec};
 use self_service_operators::project::Sample;
+use self_service_operators::project::{Project, ProjectSpec};
 
-use crate::{project};
+use crate::project;
 use crate::project::WaitForState;
 
 #[tokio::test]

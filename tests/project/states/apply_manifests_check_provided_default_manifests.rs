@@ -11,7 +11,7 @@ use tokio::time;
 
 use self_service_operators::project::Project;
 
-use crate::{project};
+use crate::project;
 use crate::project::WaitForState;
 
 #[tokio::test]
