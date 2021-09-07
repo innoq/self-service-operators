@@ -1,8 +1,0 @@
-apiVersion: "s5.innoq.io/v1"
-kind: S5App
-metadata:
-  name: my-stupid-app
-spec:
-  owner: daniel.bornkessel@innoq.com
-  private: true
-
