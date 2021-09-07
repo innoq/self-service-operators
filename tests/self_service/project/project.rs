@@ -5,7 +5,7 @@ use kube::api::PostParams;
 use kube::{Resource, ResourceExt};
 use serial_test::serial;
 
-use noqnoqnoq::self_service::project::{Project, ProjectSpec};
+use self_service_operators::self_service::project::{Project, ProjectSpec};
 
 use crate::common;
 

@@ -11,10 +11,10 @@ use krator::OperatorRuntime;
 use log::LevelFilter;
 pub use schemars::JsonSchema;
 
-use noqnoqnoq::self_service::project::operator;
-use noqnoqnoq::self_service::project::project::DEFAULT_MANIFESTS_SECRET;
-use noqnoqnoq::self_service::project::Project;
-use noqnoqnoq::self_service::project::Sample;
+use self_service_operators::self_service::project::operator;
+use self_service_operators::self_service::project::project::DEFAULT_MANIFESTS_SECRET;
+use self_service_operators::self_service::project::Project;
+use self_service_operators::self_service::project::Sample;
 use std::fs::File;
 use std::io::Read;
 
@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     builder
-        .filter(Some("noqnoqnoq"), level)
+        .filter(Some("self-service-operators"), level)
         .filter(Some("self_service_project_operator"), level)
         .init();
 
@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
 
     if opts.print_crd {
         println!(
-            "# self service crd (auto-generated with 'noqnoqnoq --print-crd'):\n{}\n",
+            "# self service crd (auto-generated):\n{}\n",
             serde_yaml::to_string(&Project::crd()).unwrap()
         );
         exit(0)
@@ -134,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
         .context("error creating kubernetes client from the current environment")?;
 
     if opts.install_crd {
-        return noqnoqnoq::install_crd(&client, &Project::crd())
+        return self_service_operators::install_crd(&client, &Project::crd())
             .await
             .and(Ok(()));
     }

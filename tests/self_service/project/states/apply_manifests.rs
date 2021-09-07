@@ -8,8 +8,8 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use noqnoqnoq::self_service::project::Sample;
-use noqnoqnoq::self_service::project::{Project, ProjectSpec};
+use self_service_operators::self_service::project::Sample;
+use self_service_operators::self_service::project::{Project, ProjectSpec};
 
 use crate::common;
 use crate::common::WaitForState;

@@ -11,6 +11,6 @@ spec:
   owners:
     - superdev@example.com
     - supradev@example.com
-  manifestValues: "\nproject_repo: github.com/innoq/noqnoqnoq\nproject_name: self-service-project\n"
+  manifestValues: "\nproject_repo: github.com/innoq/self-service-operators\nproject_name: self-service-project\n"
 
 

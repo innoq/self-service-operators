@@ -9,7 +9,7 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use noqnoqnoq::self_service::project::Project;
+use self_service_operators::self_service::project::Project;
 
 use crate::common;
 use crate::common::WaitForState;

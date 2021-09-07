@@ -1129,36 +1129,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "noqnoqnoq"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "clap",
- "env_logger 0.8.3",
- "futures",
- "handlebars",
- "http",
- "k8s-openapi",
- "krator",
- "krator-derive",
- "kube",
- "kube-derive",
- "kube-runtime",
- "log",
- "pin-utils",
- "rand 0.8.3",
- "rcgen",
- "schemars",
- "serde",
- "serde_json",
- "serde_yaml",
- "serial_test",
- "tokio",
-]
-
-[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1774,6 +1744,36 @@ checksum = "3676258fd3cfe2c9a0ec99ce3038798d847ce3e4bb17746373eb9f0f1ac16339"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "self_service_operators"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "env_logger 0.8.3",
+ "futures",
+ "handlebars",
+ "http",
+ "k8s-openapi",
+ "krator",
+ "krator-derive",
+ "kube",
+ "kube-derive",
+ "kube-runtime",
+ "log",
+ "pin-utils",
+ "rand 0.8.3",
+ "rcgen",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "serial_test",
+ "tokio",
 ]
 
 [[package]]

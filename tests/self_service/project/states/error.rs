@@ -7,7 +7,7 @@ use tokio::time;
 
 use crate::common;
 
-use noqnoqnoq::self_service::project::{Project, ProjectSpec, Sample};
+use self_service_operators::self_service::project::{Project, ProjectSpec, Sample};
 use serial_test::serial;
 
 #[tokio::test]

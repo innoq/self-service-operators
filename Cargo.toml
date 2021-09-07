@@ -1,15 +1,15 @@
 [package]
-name = "noqnoqnoq"
+name = "self_service_operators"
 version = "0.1.0"
 authors = ["Daniel Bornkessel <daniel.bornkessel@innoq.com>"]
 edition = "2018"
 description = "s5 operator"
-repository = "https://gitlab.innoq.com/daniel/noqnoqnoq"
+repository = "https://gitlab.innoq.com/daniel/self_service_operators"
 readme = "README.md"
 
 # need this for cargo-build-dependencies`
 [lib]
-name = "noqnoqnoq"
+name = "self_service_operators"
 path = "src/lib.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

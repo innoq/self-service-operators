@@ -8,12 +8,12 @@ use serial_test::serial;
 use tokio::select;
 use tokio::time;
 
-use noqnoqnoq::self_service::project::{operator, Sample};
-use noqnoqnoq::self_service::project::{Project, ProjectSpec};
+use self_service_operators::self_service::project::{operator, Sample};
+use self_service_operators::self_service::project::{Project, ProjectSpec};
 
 use crate::common;
 use crate::common::WaitForState;
-use noqnoqnoq::self_service::project::project::{
+use self_service_operators::self_service::project::project::{
     DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
 };
 

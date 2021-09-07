@@ -6,10 +6,10 @@ use krator::admission::AdmissionResult;
 use krator::Operator;
 use kube::Resource;
 
-use noqnoqnoq::self_service::project::project::{
+use self_service_operators::self_service::project::project::{
     COPY_ANNOTATION_BASE, COPY_ANNOTATION_COPY_VALUE, DEFAULT_MANIFESTS_SECRET,
 };
-use noqnoqnoq::self_service::project::Project;
+use self_service_operators::self_service::project::Project;
 use serial_test::serial;
 use std::collections::BTreeMap;
 

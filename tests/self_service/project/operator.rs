@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serial_test::serial;
 
-use noqnoqnoq::self_service::project::operator;
+use self_service_operators::self_service::project::operator;
 
 use crate::common;
 

@@ -18,14 +18,14 @@ use tokio::select;
 use tokio::task::JoinHandle;
 use tokio::time;
 
-use noqnoqnoq::self_service::project::operator;
-use noqnoqnoq::self_service::project::operator::ProjectOperator;
-use noqnoqnoq::self_service::project::project::{
+use self_service_operators::self_service::project::operator;
+use self_service_operators::self_service::project::operator::ProjectOperator;
+use self_service_operators::self_service::project::project::{
     DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
 };
-use noqnoqnoq::self_service::project::Project;
-use noqnoqnoq::self_service::project::ProjectSpec;
-use noqnoqnoq::self_service::project::Sample;
+use self_service_operators::self_service::project::Project;
+use self_service_operators::self_service::project::ProjectSpec;
+use self_service_operators::self_service::project::Sample;
 
 pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
     let (config, client) = get_client().await?;
@@ -162,7 +162,7 @@ pub async fn reinstall_self_service_crd(client: &kube::Client) -> anyhow::Result
     }
 
     let wait_for_crd_created = wait_for_state(&api, &name, WaitForState::Created);
-    let crd = noqnoqnoq::install_crd(&client, &Project::crd()).await?;
+    let crd = self_service_operators::install_crd(&client, &Project::crd()).await?;
     let _ = wait_for_crd_created.await?;
 
     const NAMESPACE: &str = "default";

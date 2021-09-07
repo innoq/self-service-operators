@@ -2,9 +2,9 @@ use k8s_openapi::api::core::v1::{Pod, Secret, ServiceAccount};
 use kube::api::DeleteParams;
 use serial_test::serial;
 
-use noqnoqnoq::self_service::project::states::apply_manifests;
-use noqnoqnoq::self_service::project::Project;
-use noqnoqnoq::self_service::project::ProjectSpec;
+use self_service_operators::self_service::project::states::apply_manifests;
+use self_service_operators::self_service::project::Project;
+use self_service_operators::self_service::project::ProjectSpec;
 
 use crate::common;
 use crate::common::WaitForState;

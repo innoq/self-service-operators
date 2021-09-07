@@ -69,7 +69,7 @@ pub struct ProjectSpec {
 impl Sample for ProjectSpec {
     fn sample() -> Self {
         let manifest_values = r#"
-project_repo: github.com/innoq/noqnoqnoq
+project_repo: github.com/innoq/self-service-operators
 project_name: self-service-project
 "#;
 
