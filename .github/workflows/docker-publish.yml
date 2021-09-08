@@ -41,7 +41,7 @@ jobs:
         with:
           key: rust-dependencies
           path: |
-            ~/target
+            $PWD/target
 
       - name: Checkout repository
         uses: actions/checkout@v2
