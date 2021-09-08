@@ -32,13 +32,25 @@ jobs:
       packages: write
 
     steps:
+      - name: Set environment variables
+        run: |
+          echo "KUBECONFIG=$PWD/kind.kubeconfig" >> $GITHUB_ENV
+
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Set environment variables
-        run: |
-          echo "GIT_SHA=${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "GIT_BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1.2.0
+
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Run tests
+        run: cargo test
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
