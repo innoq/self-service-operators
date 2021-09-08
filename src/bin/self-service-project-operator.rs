@@ -72,6 +72,7 @@ struct Opts {
     /// verbose level
     #[clap(short, long, default_value = "info", possible_values = &["debug", "info", "warn", "error"]) ]
     verbosity_level: String,
+
 }
 
 #[tokio::main]
