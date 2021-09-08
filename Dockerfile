@@ -9,7 +9,7 @@
 # --brute (15 minutes!):
 # release stripped & compressed : 3.7M self-service-project-operator
 #
-ARG COMPRESSION_FACTOR="-1"
+ARG COMPRESSION_FACTOR="-9"
 
 ARG RUST_BUILDER_IMAGE=ekidd/rust-musl-builder:latest
 
