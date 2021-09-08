@@ -36,6 +36,13 @@ jobs:
         run: |
           echo "KUBECONFIG=$PWD/kind.kubeconfig" >> $GITHUB_ENV
 
+      - name: Cache rust dependencies
+        uses: actions/cache@v2
+        with:
+          key: rust-dependencies
+          path: |
+            ~/target
+
       - name: Checkout repository
         uses: actions/checkout@v2
 
