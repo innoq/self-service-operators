@@ -40,7 +40,9 @@ jobs:
         uses: actions/cache@v2
         with:
           key: rust-dependencies
-          path: ./target
+          path: |
+            ./target
+            ~/.cargo
 
       - name: Checkout repository
         uses: actions/checkout@v2
