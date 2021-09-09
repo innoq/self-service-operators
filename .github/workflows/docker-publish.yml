@@ -67,9 +67,8 @@ jobs:
           cargo test  -- -Z unstable-options --format json --report-time | tee results.json
           cat results.json | cargo2junit > results.xml
 
-      - name: Summary test
-        run: |
-          echo "INPUT_SUMMARY=hello hello, turn the radio on!" >> $GITHUB_ENV
+      - run: echo ::set-output name=action_fruit::strawberry
+        id: fruit
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v2
@@ -79,6 +78,7 @@ jobs:
           check_name: Test Report
           fail_on_failure: true
           require_tests: true
+          summary: ${{ steps.fruit.outputs.action_fruit }}
 
 
   build_docker_image:
