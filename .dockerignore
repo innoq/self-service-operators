@@ -3,10 +3,12 @@
 /.gitignore
 /.idea
 /Dockerfile
+/chart
 /kind
 /kind.conf
 /kind.kubeconfig
 /local-kind-cluster.sh
+/manifests
 /manifests
 /pre-commit
 /target
