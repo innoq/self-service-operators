@@ -67,40 +67,27 @@ jobs:
           cargo test  -- -Z unstable-options --format json --report-time | tee results.json
           cat results.json | cargo2junit > results.xml
 
-      - run: |
-          cat<<EOF>results.json
-          ||Test|Duration|
-          |:---|:------|--------|
-          |✅|project::admission_webhook_tests::it_should_fail_if_secret_does_not_contain_addressed_data_item|1.438300624s|
-          |✅|project::admission_webhook_tests::it_should_fail_if_template_vals_are_missing|2.313754143s|
-          |✅|project::admission_webhook_tests::it_should_fail_if_manifest_values_is_not_a_yaml_string|3.449943399s|
-          |✅|project::admission_webhook_tests::it_should_fail_if_manifest_values_is_an_array|4.380823844s|
-          |✅|project::admission_webhook_tests::it_should_be_possible_to_update_projects|5.931454554s|
-          |✅|project::admission_webhook_tests::it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_operator|7.394091384s|
-          |✅|project::admission_webhook_tests::it_should_fail_if_secret_with_resource_manifests_is_not_available|8.342205405s|
-          |✅|project::admission_webhook_tests::it_should_fail_if_manifest_values_is_just_a_simple_string|9.158447769s|
-          |✅|project::manifest_secrets::it_should_correctly_copy_and_template_default_manifests|9.956931208s|
-          |✅|project::manifest_secrets::it_should_correctly_copy_annotated_manifests|12.661215585s|
-          |✅|project::manifest_secrets::it_should_correctly_copy_default_manifests|14.054686763s|
-          |✅|project::manifest_secrets::it_should_only_copy_from_annotated_secrets|15.562443355s|
-          |✅|project::manifest_secrets::it_should_skip_annotated_manifests|15.35787026s|
-          |✅|project::operator::it_fails_with_non_existant_default_manifests_secret|14.032557066s|
-          |✅|project::project::it_is_possible_to_update_project|16.684609233s|
-          |✅|project::states::apply_manifests::it_should_eventually_install_correctly_rendered_manifests|18.68673288s|
-          |✅|project::states::apply_manifests_check_provided_default_manifests::it_creates_rolebinding|18.624956613s|
-          |❌|project::states::apply_manifests_check_provided_default_manifests::it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_project|16.4534224s|
-          |✅|project::states::create_namespace::it_creates_and_deletes_namespace|20.566216433s|
-          |✅|project::states::error::it_fails_with_correct_error_state_when_invalid_manifests_are_used|30.122749003s|
-          |✅|project::yaml_manifest_parsing::it_construct_a_correct_api_path_for_yaml_manifest|29.938394874s|
-          |✅|project::yaml_manifest_parsing::it_rejects_manifests_with_an_unset_namespace|30.656137977s|
-          |✅|project::yaml_manifest_parsing::it_should_correctly_create_yaml_manifest_resources|28.35299592s|
-          EOF
-          export CHANGELOG="$(cat results.json)"
-          CHANGELOG="${CHANGELOG//'%'/'%25'}"
-          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-          echo "::set-output name=changelog::$(echo "$CHANGELOG")"
-        id: fruit
+      # sorry for this: ugly work around to get a table with all executed tests (not only the failed ones)
+      - name: Create Test Report Summary
+        id: test_summary
+        run: |
+          # cargo output has some nasty combination of escape characters which confuse bash
+          sed -i.bak -e 's/\\"//g' results.json
+
+          echo "|test|result|duration|"
+          echo "|:---|------|--------|"
+          while read line
+          do
+              # echo "${line}"|jq 'if .event != "started" and .type == "suite" then {xxx: .} else empty end'
+              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ok" then ["|","✅|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
+              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "failed" then ["|","❌|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
+          done < results.json
+
+          export SUMMARY="$(cat results.json)"
+          SUMMARY="${SUMMARY//'%'/'%25'}"
+          SUMMARY="${SUMMARY//$'\n'/'%0A'}"
+          SUMMARY="${SUMMARY//$'\r'/'%0D'}"
+          echo "::set-output name=summary::$(echo "$SUMMARY")"
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v2
@@ -110,7 +97,7 @@ jobs:
           check_name: Test Report
           fail_on_failure: true
           require_tests: true
-          summary: ${{ steps.fruit.outputs.changelog }}
+          summary: ${{ steps.test_summary.outputs.summary }}
 
 
   build_docker_image:
