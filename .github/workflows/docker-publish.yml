@@ -67,7 +67,12 @@ jobs:
           cargo test  -- -Z unstable-options --format json --report-time | tee results.json
           cat results.json | cargo2junit > results.xml
 
-      - run: echo ::set-output name=action_fruit::strawberry
+      - run: |
+          export CHANGELOG="$(cat results.json)"
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo "::set-output name=changelog::$(echo "$CHANGELOG")"
         id: fruit
 
       - name: Publish Test Report
