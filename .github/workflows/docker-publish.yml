@@ -78,10 +78,12 @@ jobs:
           echo "|:---|------|--------|"
           while read line
           do
-              # echo "${line}"|jq 'if .event != "started" and .type == "suite" then {xxx: .} else empty end'
               echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ok" then ["|","✅|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
               echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "failed" then ["|","❌|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-          done < results.json > result.md
+              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ignored" then ["|","🙈|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
+              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "timeout" then ["|","⌛️|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
+              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "allowed_failure" then ["|","🤷‍|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
+          done < results.json > results.md
 
           export SUMMARY="$(cat results.md)"
           SUMMARY="${SUMMARY//'%'/'%25'}"
