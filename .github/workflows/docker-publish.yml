@@ -81,9 +81,9 @@ jobs:
               # echo "${line}"|jq 'if .event != "started" and .type == "suite" then {xxx: .} else empty end'
               echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ok" then ["|","✅|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
               echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "failed" then ["|","❌|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-          done < results.json
+          done < results.json > result.md
 
-          export SUMMARY="$(cat results.json)"
+          export SUMMARY="$(cat results.md)"
           SUMMARY="${SUMMARY//'%'/'%25'}"
           SUMMARY="${SUMMARY//$'\n'/'%0A'}"
           SUMMARY="${SUMMARY//$'\r'/'%0D'}"
