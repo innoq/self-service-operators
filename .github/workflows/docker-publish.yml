@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      checks: write
 
     steps:
       - name: Set environment variables
@@ -54,10 +55,23 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}2
+
+      - name: Install cargo2junit
+        run: |
+          which cargo || cargo install cargo2junit
 
       - name: Run tests
-        run: cargo test
+        run: |
+          { set -o pipefail; cargo test  -- -Z unstable-options --format json --report-time | tee results.json; } && res=true || res=false
+          cat results.json | cargo2junit > results.xml
+          $res
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v2
+        if: always() # always run even if the previous step fails
+        with:
+          report_paths: 'results.xml'
 
 
   build_docker_image:
