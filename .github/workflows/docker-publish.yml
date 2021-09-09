@@ -83,7 +83,7 @@ jobs:
           check_name: Test Report
           fail_on_failure: true
           require_tests: true
-          summary: ${{ steps.fruit.outputs.action_fruit }}
+          summary: ${{ steps.fruit.outputs.changelog }}
 
 
   build_docker_image:
