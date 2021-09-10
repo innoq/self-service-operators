@@ -74,8 +74,8 @@ jobs:
           # cargo output has some nasty combination of escape characters which confuse bash
           sed -i.bak -e 's/\\"//g' results.json
 
-          echo "|test|result|duration|" > results.md
-          echo "|:---|------|--------|" >> results.md
+          echo "|  |test  |duration|" >  results.md
+          echo "|--|------|--------|" >> results.md
           while read line
           do
               echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ok" then ["|","✅|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
