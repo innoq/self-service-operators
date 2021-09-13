@@ -11,9 +11,9 @@
 #
 ARG COMPRESSION_FACTOR="-9"
 
-ARG RUST_BUILDER_IMAGE=ekidd/rust-musl-builder:latest
+ARG RUST_BUILDER_IMAGE=docker.io/ekidd/rust-musl-builder:latest
 
-# sensible choices are scratch, busybox (if you need a shell), alpine (if you need a shell + package manager)
+# sensible choices are scratch, docker.io/busybox (if you need a shell), docker.io/alpine (if you need a shell + package manager)
 ARG RUNTIME_IMAGE=scratch
 
 #ARG TARGET=x86_64-unknown-linux-musl
@@ -65,7 +65,7 @@ RUN bash -c "echo ${ARTIFACT} > /tmp/deps;\
     touch /tmp/buildroot"
 
 ################################################### compressor stage (compress binary)
-FROM alpine as compressor
+FROM docker.io/alpine as compressor
 ARG ARTIFACT
 ARG BIN
 ARG COMPRESSION_FACTOR
