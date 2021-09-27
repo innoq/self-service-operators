@@ -23,7 +23,7 @@ use anyhow::Context;
 use serde_yaml;
 
 fn keep_app_version_current_in_helm_chart() -> anyhow::Result<()> {
-    const FILE: &str = "./chart/self-service-operators/Chart.yaml";
+    const FILE: &str = "./charts/self-service-operators/Chart.yaml";
 
     let mut yaml: BTreeMap<String, String>;
     {
