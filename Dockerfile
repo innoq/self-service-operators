@@ -44,7 +44,7 @@ ARG TARGET
 ARG ARTIFACT
 COPY --from=cacher /home/rust/.cargo /home/rust/.cargo
 COPY --from=cacher /app/target target
-COPY . .
+COPY --chown=rust:rust . .
 RUN cargo build --target="${TARGET}" --release --bin self-service-project-operator
 RUN strip ${ARTIFACT}
 
