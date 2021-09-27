@@ -17,11 +17,10 @@
 
 cargo fmt
 cargo fix --allow-dirty --allow-staged
+cargo build --bin self-service-project-operator
 
-cargo run --bin self-service-project-operator -- \
-  --print-crd > manifests/projects.selfservice.innoq.io.yaml
-
-cargo run --bin self-service-project-operator -- --print-sample-project-manifest > manifests/project-sample.yaml
+./target/debug/self-service-project-operator --print-crd > manifests/projects.selfservice.innoq.io.yaml
+./target/debug/self-service-project-operator --print-sample-project-manifest > manifests/project-sample.yaml
 
 git diff --exit-code manifests/projects.selfservice.innoq.io.yaml
 git diff --exit-code manifests/project-sample.yaml

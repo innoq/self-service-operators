@@ -194,9 +194,14 @@ jobs:
       - run_tests
       - build_docker_image
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: '0'
+
       - name: Install helm
         run: |
-          wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
+          wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/local/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
       - name: Create helm packages & index
         run: |
           cd charts
