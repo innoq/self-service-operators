@@ -63,7 +63,7 @@ jobs:
 
       - name: Install cargo2junit
         run: |
-          which cargo || cargo install cargo2junit
+          which cargo2unit || cargo install cargo2junit
 
       - name: Run tests
         run: |
@@ -170,6 +170,7 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}}.{{patch}}
             type=semver,pattern={{major}}
             type=sha
           flavor: |
