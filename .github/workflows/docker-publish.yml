@@ -19,6 +19,9 @@ env:
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
   IMAGE_NAME: ${{ github.repository }}
+  OS: linux
+  ARCH: amd64
+  HELM_VERSION: 3.6.3
 
 
 jobs:
@@ -182,3 +185,30 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/buildcache
+
+  publish_helm_chart:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs:
+      - run_tests
+      - build_docker_image
+    steps:
+      - name: Install helm
+        run: |
+          wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
+      - name: Create helm packages & index
+        run: |
+          cd charts
+          for dir in *
+          do
+            helm package $dir
+          done
+          helm repo index .
+      - name: Publish chart
+        run: |
+          git checkout gh-pages
+          mv charts/*.yaml charts/*.tgz .
+          git add .
+          git commit -m "Update chart to current version" || true
+          git push
+

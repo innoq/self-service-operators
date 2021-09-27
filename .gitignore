@@ -1,2 +1,4 @@
 /kind*
 /target
+/charts/*.yaml
+/charts/*.tgz
