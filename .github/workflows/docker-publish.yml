@@ -212,8 +212,12 @@ jobs:
           helm repo index .
       - name: Publish chart
         run: |
+          git config --global user.email "self-service-helm-creator@bornkessel.com"
+          git config --global user.name "Helmut Seite"
+
           git checkout gh-pages
           mv charts/*.yaml charts/*.tgz .
+
           git add .
           git commit -m "Update chart to current version" || true
           git push
