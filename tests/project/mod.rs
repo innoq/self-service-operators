@@ -286,7 +286,7 @@ pub async fn install_project(
     client: &kube::Client,
     #[allow(clippy::ptr_arg)] name: &String,
 ) -> anyhow::Result<Project> {
-    let timeout_secs = 10;
+    let timeout_secs = 20;
 
     let wait_for_namespace_created_handle = wait_for_state(
         &kube::Api::<Namespace>::all(client.clone()),
