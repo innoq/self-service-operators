@@ -89,7 +89,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     );
     assert_eq!(
         rule.resources,
-        Some(vec!["projectXXs".to_string()]),
+        Some(vec!["projects".to_string()]),
         "owner cluster role should have correct resource set"
     );
 
