@@ -32,7 +32,7 @@ else
     echo "aborting"
 fi
 
-cat<<EOF
+cat<<'EOF'
 
                  _       _
  _   _ _ __   __| | __ _| |_ ___    __ _ _ __  _ __
