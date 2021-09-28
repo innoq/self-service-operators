@@ -3,13 +3,13 @@ entries:
   self-service-operators:
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2021-09-27T19:04:32.726232951Z"
+    created: "2021-09-28T08:54:00.008583595Z"
     description: 'A self service implementation for Kubernetes: allow internal users
       to use namespaces without giving users unnecessary open permissions.'
-    digest: a6ae5020e76edc009f4acded09302e9701b04d77530c9e5c219b4e93d880c611
+    digest: e769c0849959b2ea855127dc88afb605c8b437b076bd22b7cbde20bf9e08de8c
     name: self-service-operators
     type: application
     urls:
     - self-service-operators-0.0.1.tgz
     version: 0.0.1
-generated: "2021-09-27T19:04:32.725300845Z"
+generated: "2021-09-28T08:54:00.007580164Z"
