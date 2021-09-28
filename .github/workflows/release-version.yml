@@ -1,4 +1,4 @@
-name: test / build / release docker image
+name: Release docker image and helm chart
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -22,7 +22,7 @@ env:
 
 jobs:
   retag_docker_image:
-    name: Retag docker image to release version
+    name: Create version tag for existing docker image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,18 +39,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Re-tag current branch
+      - name: Create version tag for existing docker image
         run: |
           git_sha=sha-$(git rev-parse --short HEAD)
           git_tag=$(basename ${GITHUB_REF})
 
           # wait for image to be available
           max_tries=60 # max_tries times every 10 seconds
-          printf "waiting for docker image '${REGISTRY}/${IMAGE_NAME}:${git_sha}' to be available "
+          echo "waiting for docker image '${REGISTRY}/${IMAGE_NAME}:${git_sha}' to be available"
           for _ in $(seq 1 120)
           do
             sleep 10
-            printf "."
+            echo "."
             docker pull ${REGISTRY}/${IMAGE_NAME}:${git_sha} &>/dev/null && break
           done
 
