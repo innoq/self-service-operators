@@ -43,6 +43,10 @@ Once this resource is applied, the following happens:
 
 ### Configuration
 
+#### Via Helm
+
+    helm repo add self-services https://innoq.github.io/self-service-operators
+
 Yaml-representations of the resources that should be created in the new namespace must be stored in Kubernetes-Secrets. Each secret must have the annotation:
 
 ```yaml
