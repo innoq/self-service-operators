@@ -48,6 +48,19 @@ fn keep_app_version_current_in_helm_chart() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn write_version_file() -> anyhow::Result<()> {
+    const FILE: &str = "./VERSION";
+
+    let mut version_file =
+        File::create(FILE).context(format!("error opening {} for writing", FILE))?;
+    write!(version_file, "{}", env!("CARGO_PKG_VERSION").to_string())?;
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
-    keep_app_version_current_in_helm_chart()
+    keep_app_version_current_in_helm_chart()?;
+    write_version_file()?;
+
+    Ok(())
 }
