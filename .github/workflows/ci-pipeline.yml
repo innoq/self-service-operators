@@ -7,9 +7,7 @@ name: test / build / release docker image
 
 on:
   push:
-    branches: [ main ]
-    # Publish semver tags as releases.
-    tags: [ '*.*.*' ]
+    branches: [ '*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch: {}
@@ -191,45 +189,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/buildcache
-
-  publish_helm_chart:
-    name: Publish Helm Chart
-    runs-on: ubuntu-latest
-    needs:
-      - run_tests
-      - build_docker_image
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: '0'
-
-      - uses: actions/cache@v2
-        with:
-          path: |
-            /usr/local/bin
-          key: ${{ runner.os }}-helm-${HELM_VERSION}-binary
-
-      - name: Install helm
-        run: |
-          test -e /usr/local/bin/helm || wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/local/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
-
-      - name: Create helm packages & index
-        run: |
-          cd charts
-          for dir in *
-          do
-            helm package $dir
-          done
-          helm repo index .
-      - name: Publish chart
-        run: |
-          git config --global user.email "self-service-helm-creator@bornkessel.com"
-          git config --global user.name "Helm Packager"
-
-          git checkout gh-pages
-          mv charts/*.yaml charts/*.tgz .
-
-          git add .
-          git commit -m "Update chart to current version" || true
-          git push

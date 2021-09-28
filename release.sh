@@ -7,11 +7,12 @@ cat<<EOF >${temp_file}
 #
 # Note:
 #     - lines starting with a '#' are ignored
-#     - Markdown is _not_ rendered on Github
+#     - the first line not starting with a '#' is the title ... don't leave an extra blank line!
+#     - Markdown is _not_ rendered on Github, the release text is formatted as <pre> text
 #     - release version will be ${version}
 #     - you can abort release after exiting this editor
 #
-# Release title (this will be prefixed by github with '${version}: '
+# Release title (this will be prefixed by github with '${version}): '
 
 # Release description
 
