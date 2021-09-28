@@ -41,19 +41,26 @@ jobs:
 
       - name: Re-tag current branch
         run: |
-          git_sha=$(git rev-parse --short HEAD)
+          git_sha=sha-$(git rev-parse --short HEAD)
           git_tag=$(basename ${GITHUB_REF})
 
           # wait for image to be available
           max_tries=60 # max_tries times every 10 seconds
+          printf "waiting for docker image '${REGISTRY}/${IMAGE_NAME}:${git_sha}' to be available "
           for _ in $(seq 1 120)
           do
             sleep 10
-            docker pull ${REGISTRY}/${IMAGE_NAME}:${git_sha} && break
+            printf "."
+            docker pull ${REGISTRY}/${IMAGE_NAME}:${git_sha} &>/dev/null && break
           done
 
-          docker tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
-          docker push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+          echo " ✅"
+
+          echo "tagging and pushing docker image"
+          (set -ex;
+            docker tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+          )
 
   publish_helm_chart:
     name: Publish Helm Chart
