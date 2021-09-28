@@ -148,6 +148,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
+      - name: Set version output
+        id: version
+        run: echo "::set-output name=VERSION::$(cat VERSION)"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
@@ -173,6 +177,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}.{{patch}}
             type=semver,pattern={{major}}
             type=sha
+            type=raw,value=${{ steps.version.outputs.VERSION }}-SNAPSHOT
           flavor: |
             latest=auto
 
@@ -199,9 +204,16 @@ jobs:
         with:
           fetch-depth: '0'
 
+      - uses: actions/cache@v2
+        with:
+          path: |
+            /usr/local/bin
+          key: ${{ runner.os }}-helm-${HELM_VERSION}-binary
+
       - name: Install helm
         run: |
-          wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/local/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
+          test -e /usr/local/bin/helm || wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/local/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
+
       - name: Create helm packages & index
         run: |
           cd charts
@@ -213,7 +225,7 @@ jobs:
       - name: Publish chart
         run: |
           git config --global user.email "self-service-helm-creator@bornkessel.com"
-          git config --global user.name "Helmut Seite"
+          git config --global user.name "Helm Packager"
 
           git checkout gh-pages
           mv charts/*.yaml charts/*.tgz .
@@ -221,4 +233,3 @@ jobs:
           git add .
           git commit -m "Update chart to current version" || true
           git push
-
