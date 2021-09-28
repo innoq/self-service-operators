@@ -10,9 +10,8 @@ cat<<EOF >${temp_file}
 #     - Markdown is _not_ rendered on Github
 #     - release version will be ${version}
 #     - you can abort release after exiting this editor
-
+#
 # Release title (this will be prefixed by github with '${version}: '
-
 
 # Release description
 
