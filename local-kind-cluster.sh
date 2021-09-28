@@ -17,7 +17,7 @@
 #
 
 KINDCONFIG=kind.kubeconfig
-CLUSTER_NAME=test
+CLUSTER_NAME=self-service-operators
 INGRESS_PORT_HTTP=80   # must not be used by somebody else
 INGRESS_PORT_HTTPS=443 # must not be used by somebody else
 

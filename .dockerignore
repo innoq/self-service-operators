@@ -11,5 +11,6 @@
 /manifests
 /manifests
 /pre-commit
+/release.sh
 /target
 /tests
