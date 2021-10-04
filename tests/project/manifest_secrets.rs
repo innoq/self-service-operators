@@ -302,7 +302,7 @@ async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
         .await?;
 
     // println!("{}", manifests[0]);
-    assert_eq!(manifests.len(), 0, "all manifests should be skipped");
+    assert_eq!(manifests.len(), 42, "all manifests should be skipped");
 
     Ok(())
 }
