@@ -64,43 +64,26 @@ jobs:
           cargo install cargo2junit || true
 
       - name: Run tests
+        # note: we don't handle errors here as the 'mikepenz/action-junit-report@v2' below will fail if there
+        #       was an error
         run: |
           cargo test  -- -Z unstable-options --format json --report-time | tee results.json
           cat results.json | cargo2junit > results.xml
 
-      # sorry for this: ugly work around to get a table with all executed tests (not only the failed ones)
-      - name: Create Test Report Summary
-        id: test_summary
-        run: |
-          # cargo output has some nasty combination of escape characters which confuse bash
-          sed -i.bak -e 's/\\"//g' results.json
-
-          echo "|  |test  |duration|" >  results.md
-          echo "|--|------|--------|" >> results.md
-          while read line
-          do
-              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ok" then ["|","✅|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "failed" then ["|","❌|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "ignored" then ["|","🙈|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "timeout" then ["|","⌛️|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-              echo "${line}"|jq -r 'if .event != "started" and .type != "suite" and .event == "allowed_failure" then ["|","🤷‍|", .name,"|",(.exec_time|tostring),"s","|"]|add else empty end'
-          done < results.json >> results.md
-
-          export SUMMARY="$(cat results.md)"
-          SUMMARY="${SUMMARY//'%'/'%25'}"
-          SUMMARY="${SUMMARY//$'\n'/'%0A'}"
-          SUMMARY="${SUMMARY//$'\r'/'%0D'}"
-          echo "::set-output name=summary::$(echo "$SUMMARY")"
+      - name: Prepare junit report
+        id: cargo_reporter
+        uses:  innoq/action-cargo-test-report@main
+        with:
+          cargo-test-report-json: 'results.json'
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v2
         if: always() # always run even if the previous step fails
         with:
           report_paths: 'results.xml'
-          check_name: Test Report
           fail_on_failure: true
           require_tests: true
-          summary: ${{ steps.test_summary.outputs.summary }}
+          summary: ${{ steps.cargo_reporter.outputs.summary }}
 
 
   build_docker_image:
