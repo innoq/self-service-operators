@@ -44,7 +44,7 @@ async fn it_should_be_possible_to_update_projects() -> anyhow::Result<()> {
     let result = operator.admission_hook(project).await;
 
     match result {
-        AdmissionResult::Allow(_) => panic!("boom"),
+        AdmissionResult::Allow(_) => {}
         _ => panic!("admission hook should pass when a project gets updated"),
     }
     Ok(())

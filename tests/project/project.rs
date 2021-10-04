@@ -27,7 +27,6 @@ use crate::project;
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 

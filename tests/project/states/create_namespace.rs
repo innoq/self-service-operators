@@ -31,8 +31,6 @@ use crate::project::WaitForState;
 #[tokio::test]
 #[serial]
 async fn it_creates_and_deletes_namespace() -> anyhow::Result<()> {
-    let _ = time::sleep(Duration::from_secs(240)).await;
-
     let timeout_secs = 60;
     let (client, _) = project::before_each().await?;
 
