@@ -24,3 +24,5 @@ cargo build --bin self-service-project-operator
 
 git diff --exit-code manifests/projects.selfservice.innoq.io.yaml
 git diff --exit-code manifests/project-sample.yaml
+
+which markdown-toc && markdown-toc -i README.md

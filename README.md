@@ -1,5 +1,18 @@
 # Self Service Operators
 
+** Note: ** Readme is slightly outdated atm
+
+<!-- toc -->
+
+- [Self Service Project Operator](#self-service-project-operator)
+  * [What it does](#what-it-does)
+  * [Example scenario](#example-scenario)
+  * [Configuration](#configuration)
+    + [Via Helm](#via-helm)
+    + [Example](#example)
+
+<!-- tocstop -->
+
 This is a small collection of self service operators for Kubernetes. It's tailored to a setup where you want to enable people to use a Kubernetes-Cluster without the need to apply to a central authority if you want to deploy new apps.
 
 ## Self Service Project Operator
