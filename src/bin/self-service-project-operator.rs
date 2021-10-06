@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-#[macro_use]
-extern crate log;
-
+use std::fs::File;
+use std::io::Read;
 use std::time::Duration;
 use std::{convert::TryFrom, process::exit};
 
@@ -24,15 +23,13 @@ use anyhow::{bail, Context};
 use clap::{crate_authors, crate_version, Clap};
 use env_logger::*;
 use krator::OperatorRuntime;
-use log::LevelFilter;
+use log::{debug, info, LevelFilter};
 pub use schemars::JsonSchema;
 
 use self_service_operators::project::operator;
 use self_service_operators::project::project::DEFAULT_MANIFESTS_SECRET;
 use self_service_operators::project::Project;
 use self_service_operators::project::Sample;
-use std::fs::File;
-use std::io::Read;
 
 #[derive(Clap)]
 #[clap(
@@ -88,8 +85,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     builder
-        .filter(Some("self-service-operators"), level)
         .filter(Some("self_service_project_operator"), level)
+        .filter(Some("self_service_operators::project"), level)
         .init();
 
     info!(

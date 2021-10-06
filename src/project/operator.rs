@@ -165,6 +165,7 @@ impl Operator for ProjectOperator {
             "reading admission webhook certificates from secret {}/{}",
             &namespace, &name
         );
+
         match Api::<Secret>::namespaced(client, namespace)
             .get(&name)
             .await
