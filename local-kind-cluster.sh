@@ -48,7 +48,7 @@ compl() {                        # print code for bash completion; execute with 
 
 _install_kind() {
   test -e ./kind && return
-  curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/v0.10.0/kind-$(uname)-amd64
+  curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-$(uname)-amd64
   chmod +x ./kind
 }
 
