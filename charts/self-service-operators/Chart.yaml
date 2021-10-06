@@ -4,4 +4,4 @@ appVersion: 0.1.4
 description: "A self service implementation for Kubernetes: allow internal users to use namespaces without giving users\nunnecessary open permissions."
 name: self-service-operators
 type: application
-version: 0.0.1
+version: 0.0.2
