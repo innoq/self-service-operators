@@ -92,6 +92,10 @@ async fn main() -> anyhow::Result<()> {
         .filter(Some("self_service_project_operator"), level)
         .init();
 
+    info!(
+        "starting Self Service Project operator version {}",
+        crate_version!()
+    );
     debug!("logging level set to 'debug' -- don't use this in production as it can pontentially leak sensitive information");
 
     if opts.print_crd {
@@ -128,12 +132,15 @@ async fn main() -> anyhow::Result<()> {
         exit(0)
     }
 
+    debug!("infering kubernetes config");
     let kubeconfig = kube::config::Config::infer().await?;
 
     let namespace = match opts.namespace {
         Some(ref namespace) => namespace,
         None => &kubeconfig.default_ns,
     };
+
+    info!("using namespace {}", namespace);
 
     if opts.print_admission_controller_manifests {
         println!(
@@ -150,12 +157,14 @@ async fn main() -> anyhow::Result<()> {
         .context("error creating kubernetes client from the current environment")?;
 
     if opts.install_crd {
+        info!("installing crd");
         return self_service_operators::install_crd(&client, &Project::crd())
             .await
             .and(Ok(()));
     }
 
     if !opts.skip_install_admission_controller_manifests {
+        info!("installing admission controller resources");
         let resources = krator::admission::WebhookResources::from(
             Project::admission_webhook_resources(&namespace),
         );
@@ -171,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    // Only track mooses in Glacier NP
+    info!("starting operator");
     // let params = ListParams::default().labels("nps.gov/park=glacier");
     let mut runtime = OperatorRuntime::new(&kubeconfig, tracker, None);
     runtime.start().await;

@@ -161,6 +161,10 @@ impl Operator for ProjectOperator {
 
         let name = Project::admission_webhook_secret_name();
 
+        debug!(
+            "reading admission webhook certificates from secret {}/{}",
+            &namespace, &name
+        );
         match Api::<Secret>::namespaced(client, namespace)
             .get(&name)
             .await
