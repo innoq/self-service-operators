@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ssh-public-key-reader
+  namespace: {{ __PROJECT_NAME__ }}
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - ssh-public-key
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list

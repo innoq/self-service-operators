@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ssh-key-creator
+  namespace: {{ __PROJECT_NAME__ }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  - configmaps
+  verbs:
+  - create
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - ssh-key-creator
+  resources:
+  - roles
+  - rolebindigs
+  verbs:
+  - patch
+- apiGroups:
+  - ""
+  resourceNames:
+  - ssh-key-creator
+  resources:
+  - serviceaccounts
+  verbs:
+  - patch

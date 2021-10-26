@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ssh-key-creator
+  namespace: {{ __PROJECT_NAME__ }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ssh-key-creator
+subjects:
+- kind: ServiceAccount
+  name: ssh-key-creator
+  namespace: {{ __PROJECT_NAME__ }}
