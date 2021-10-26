@@ -153,7 +153,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 #[serial]
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
-    let timeout_secs = 6;
+    let timeout_secs = 10;
     let name = project::random_name("rolebinding-test");
 
     let project = project::install_project(&client, &name).await?;

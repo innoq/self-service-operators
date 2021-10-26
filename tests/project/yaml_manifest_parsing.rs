@@ -90,8 +90,15 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     let api = kube::Api::<ServiceAccount>::namespaced(client.clone(), &name);
     project::wait_for_state(&api, &"default".to_string(), WaitForState::Created).await?;
 
-    let default_sa = api.get("default").await?;
-    let default_secret_name = default_sa.secrets.as_ref().unwrap()[0]
+    let mut default_sa_secret;
+    loop {
+        default_sa_secret = api.get("default").await?;
+        if default_sa_secret.secrets.as_ref().is_some() {
+            break;
+        }
+    }
+
+    let default_secret_name = default_sa_secret.secrets.as_ref().unwrap()[0]
         .name
         .as_ref()
         .unwrap();
