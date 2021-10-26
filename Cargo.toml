@@ -49,7 +49,7 @@ version = "0.2.0"
 
 [dependencies.krator] # A Kubernetes operator implementation in Rust
 version = "0.3.0"
-features = ["derive-admission-webhook"]
+features = ["admission-webhook", "derive-admission-webhook"]
 # git = "https://github.com/deislabs/krustlet.git"
 # branch = "main"
 # git = "file:///Users/kesselborn/dev/innoq/krustlet"

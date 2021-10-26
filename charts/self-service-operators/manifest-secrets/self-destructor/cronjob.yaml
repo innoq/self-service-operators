@@ -1,7 +1,8 @@
-apiVersion: batch/v1beta1
+apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: self-descruct
+  name: self-destruct-project
+  namespace: {{ __PROJECT_NAME__ }}
 spec:
   jobTemplate:
     metadata:
