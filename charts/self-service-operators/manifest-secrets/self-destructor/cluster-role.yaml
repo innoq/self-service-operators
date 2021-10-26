@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: selfservice:project:manifests:self-descruct:{{ __PROJECT_NAME__ }}
+rules:
+- apiGroups:
+  - selfservice.innoq.io
+  resourceNames:
+  - {{ __PROJECT_NAME__ }}
+  resources:
+  - projects
+  verbs:
+  - delete

@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: selfservice:project:manifests:self-descruct:{{ __PROJECT_NAME__ }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: selfservice:project:manifests:self-descruct:{{ __PROJECT_NAME__ }}
+subjects:
+- kind: ServiceAccount
+  name: self-destructor
+  namespace: {{ __PROJECT_NAME__ }}
