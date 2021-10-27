@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 #[doc = "Reflects the status of the current self service project"]
 pub struct ProjectStatus {
-    pub(crate) phase: Option<ProjectPhase>,
+    pub phase: Option<ProjectPhase>,
     pub message: Option<String>,
     pub summary: Option<String>,
 }

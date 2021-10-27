@@ -29,6 +29,7 @@ use self_service_operators::project::{Project, ProjectSpec};
 
 use crate::project;
 use crate::project::WaitForState;
+use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
 #[serial]
@@ -135,10 +136,60 @@ array:
     );
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_error_with_invalid_manifests() -> anyhow::Result<()> {
+    let (client, _) = project::before_each().await?;
+
+    let name = project::random_name("error-on-failing-manifests");
+
+    project::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        vec![include_str!("../../fixtures/failing-manifest.yaml")],
+    )
+    .await?;
+
+    let manifest_values = r#"
+name: name_with_forbidden_underscores
+"#;
+
+    let mut spec = ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values.into());
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests".to_string(),
+        "copy".to_string(),
+    );
+
+    let project = Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations),
+            ..Default::default()
+        },
+        spec,
+        ..Default::default()
+    };
+
+    let api: kube::Api<Project> = kube::Api::all(client.clone());
+    let _ = api.create(&PostParams::default(), &project).await;
+
+    assert!(
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::FailedDueToError)
+            .await
+            .is_ok(),
+        "project should be in error state"
     );
 
     Ok(())

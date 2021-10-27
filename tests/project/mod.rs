@@ -34,8 +34,9 @@ use self_service_operators::project::operator::ProjectOperator;
 use self_service_operators::project::project::{
     DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
 };
-use self_service_operators::project::{ProjectSpec, Sample};
+use self_service_operators::project::{ProjectSpec, ProjectStatus, Sample};
 
+use self_service_operators::project::states::ProjectPhase;
 use self_service_operators::project::Project;
 use std::convert::TryFrom;
 
@@ -382,27 +383,32 @@ where
 }
 
 #[allow(dead_code)] // it's not used by every test and therefore sometimes throws warnings
-pub async fn assert_project_is_in_waiting_state(client: &Client, name: &str) -> anyhow::Result<()> {
-    let mut last_summary = "".to_string();
+pub async fn assert_project_is_in_phase(
+    client: &Client,
+    name: &str,
+    phase: ProjectPhase,
+) -> anyhow::Result<()> {
+    let mut current_project_phase = None;
 
     let api: kube::Api<Project> = kube::Api::all(client.clone());
     for _ in 0..60 {
         let _ = tokio::time::sleep(Duration::from_secs(1)).await;
         let project = api.get(&name).await?;
-        if project.status.clone().unwrap().summary.is_none() {
-            continue;
-        }
 
-        let status = &project.status.clone().unwrap();
-        last_summary = status.summary.clone().unwrap();
-        if last_summary == *"waiting for changes" {
+        let status: &ProjectStatus = &project.status.clone().unwrap();
+        current_project_phase = status.phase.clone();
+
+        if current_project_phase.is_some()
+            && std::mem::discriminant(current_project_phase.as_ref().unwrap())
+                == std::mem::discriminant(&phase)
+        {
             return Ok(());
         }
     }
 
     panic!(
-        "project should be in waiting state -- last summary was: {}",
-        last_summary
+        "project should be in phase {:?} but is in phase {:?}",
+        phase, current_project_phase
     );
 }
 

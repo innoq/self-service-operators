@@ -32,6 +32,7 @@ use self_service_operators::project::{Project, ProjectSpec};
 
 use crate::project;
 use crate::project::WaitForState;
+use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
 #[serial]
@@ -96,7 +97,7 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     assert!(resources.is_ok());
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -131,7 +132,7 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
     );
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -172,7 +173,7 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
 	);
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -243,7 +244,7 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     );
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"

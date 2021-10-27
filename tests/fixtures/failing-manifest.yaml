@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ name }}
+spec:
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 5
+  hostname: forbidden:name
+  containers:
+    - name: forbidden:name
+      image: alpine
+      command: ['sh', '-c', 'echo Hello Kubernetes! && sleep 3600']

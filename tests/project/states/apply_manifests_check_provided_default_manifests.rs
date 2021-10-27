@@ -29,6 +29,7 @@ use self_service_operators::project::Project;
 
 use crate::project;
 use crate::project::WaitForState;
+use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
 #[serial]
@@ -140,7 +141,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     );
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"
@@ -218,7 +219,7 @@ async fn it_creates_rolebinding() -> anyhow::Result<()> {
     );
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"

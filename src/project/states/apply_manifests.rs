@@ -154,7 +154,7 @@ pub async fn apply_yaml_manifest(
 
     match client.request_text(request).await {
         Ok(_) => Ok(()),
-        Err(e) => bail!("error applying manifest: {}", e),
+        Err(e) => bail!("error applying manifest: {}", e.to_string()),
     }
 }
 

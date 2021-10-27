@@ -24,6 +24,7 @@ use serial_test::serial;
 use self_service_operators::project::{Project, ProjectSpec};
 
 use crate::project;
+use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
 #[serial]
@@ -35,7 +36,8 @@ async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
 
     let api: kube::Api<Project> = kube::Api::all(client.clone());
 
-    let _ = project::assert_project_is_in_waiting_state(&client, &name).await;
+    let _ =
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges).await;
 
     let mut project = api.get(&name).await?;
     let resource_version = project.resource_version();
@@ -48,11 +50,11 @@ async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
     meta.managed_fields = None;
 
     if let Err(e) = api.replace(&name, &PostParams::default(), &project).await {
-        panic!("error updating project: {:?}:\n{}", &project, e);
+        panic!("error updating project: {:?}:\n{:?}", &project, e);
     }
 
     assert!(
-        project::assert_project_is_in_waiting_state(&client, &name)
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in waiting state"
