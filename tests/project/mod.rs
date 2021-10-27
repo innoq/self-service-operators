@@ -77,7 +77,7 @@ pub async fn before_each() -> anyhow::Result<(kube::Client, ProjectOperator)> {
         client.clone(),
         "default",
         DEFAULT_MANIFESTS_SECRET,
-        Duration::from_secs(1),
+        Duration::from_secs(0),
     )
     .await
     .unwrap();

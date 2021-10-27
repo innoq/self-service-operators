@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
+use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
 
 use krator::{Manifest, State, Transition};
+use kube::api::{ListParams, WatchEvent};
 use tokio::sync::RwLock;
 
 use crate::project::project_status::ProjectStatus;
-use crate::project::states::{ProjectPhase, ProjectState, SharedState};
+use crate::project::states::{CreateNamespace, ProjectPhase, ProjectState, SharedState};
 use crate::project::Project;
 
 #[derive(Debug, Default)]
@@ -31,13 +33,44 @@ pub struct Error;
 impl State<ProjectState> for Error {
     async fn next(
         self: Box<Self>,
-        _shared: Arc<RwLock<SharedState>>,
+        shared: Arc<RwLock<SharedState>>,
         state: &mut ProjectState,
-        _manifest: Manifest<Project>,
+        manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
         info!("error {}", &state.name);
 
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        let lp = &ListParams::default().fields(&format!("metadata.name={}", state.name));
+        let mut stream = kube::Api::<Project>::all(shared.read().await.client.clone())
+            .watch(lp, &(manifest.latest().metadata.resource_version.unwrap()))
+            .await
+            .unwrap()
+            .boxed();
+
+        match stream.try_next().await {
+            Ok(Some(status)) => match status.clone() {
+                WatchEvent::Modified(_resource) => {
+                    info!("project {} modified", state.name);
+                    return Transition::next(self, CreateNamespace);
+                }
+                WatchEvent::Error(e) => {
+                    warn!(
+                        "ERROR watching Project with name {}: {}",
+                        state.name, e.message
+                    );
+                }
+                _ => debug!(
+                    "unimplemented state while watching for changes on Project with name {}: {:?}",
+                    state.name, status
+                ),
+            },
+            Err(e) => {
+                state.error = e.to_string();
+                return Transition::next(self, Error);
+            }
+            _ => {
+                print!("#");
+            }
+        }
 
         Transition::next(self, Error)
     }

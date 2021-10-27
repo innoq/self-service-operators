@@ -20,6 +20,8 @@ use std::collections::BTreeMap;
 use k8s_openapi::api::core::v1::{ConfigMap, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::PostParams;
+use kube::Resource;
+use kube::ResourceExt;
 use serial_test::serial;
 use tokio::select;
 use tokio::time;
@@ -187,6 +189,81 @@ name: name_with_forbidden_underscores
 
     assert!(
         project::assert_project_is_in_phase(&client, &name, ProjectPhase::FailedDueToError)
+            .await
+            .is_ok(),
+        "project should be in error state"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_recover_after_project_was_fixed() -> anyhow::Result<()> {
+    let (client, _) = project::before_each().await?;
+
+    let name = project::random_name("error-on-failing-manifests");
+
+    project::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        vec![include_str!("../../fixtures/failing-manifest.yaml")],
+    )
+    .await?;
+
+    let manifest_values = r#"
+name: name_with_forbidden_underscores
+"#;
+
+    let mut spec = ProjectSpec::sample();
+    spec.manifest_values = Some(manifest_values.into());
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests".to_string(),
+        "copy".to_string(),
+    );
+
+    let project = Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations.clone()),
+            ..Default::default()
+        },
+        spec: spec.clone(),
+        ..Default::default()
+    };
+
+    let api: kube::Api<Project> = kube::Api::all(client.clone());
+    let _ = api.create(&PostParams::default(), &project).await?;
+
+    assert!(
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::FailedDueToError)
+            .await
+            .is_ok(),
+        "project should be in error state"
+    );
+
+    let manifest_values = r#"
+name: foooooo
+"#;
+
+    spec.manifest_values = Some(manifest_values.into());
+
+    let mut project = api.get(&name).await?;
+    let resource_version = project.resource_version();
+    project.spec = spec;
+
+    let meta = project.meta_mut();
+    meta.resource_version = resource_version;
+    meta.managed_fields = None;
+
+    let _ = api
+        .replace(&*name, &PostParams::default(), &project)
+        .await?;
+
+    assert!(
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
             .await
             .is_ok(),
         "project should be in error state"

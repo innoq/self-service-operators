@@ -29,3 +29,4 @@ impl TransitionTo<CreateNamespace> for WaitForChanges {}
 impl TransitionTo<Error> for WaitForChanges {}
 
 impl TransitionTo<Error> for Error {}
+impl TransitionTo<CreateNamespace> for Error {}
