@@ -17,11 +17,12 @@
 use core::time::Duration;
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::core::v1::{ConfigMap, Pod};
+use k8s_openapi::api::core::v1::{ConfigMap, Pod, PodStatus};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::api::PostParams;
+use kube::api::{DeleteParams, PostParams};
 use kube::Resource;
 use kube::ResourceExt;
+use log::debug;
 use serial_test::serial;
 use tokio::select;
 use tokio::time;
@@ -30,7 +31,7 @@ use self_service_operators::project::Sample;
 use self_service_operators::project::{Project, ProjectSpec};
 
 use crate::project;
-use crate::project::WaitForState;
+use crate::project::{wait_for_state, WaitForState};
 use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
@@ -202,7 +203,7 @@ name: name_with_forbidden_underscores
 async fn it_should_recover_after_project_was_fixed() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("error-on-failing-manifests");
+    let name = project::random_name("recover-projects");
 
     project::apply_manifest_secret(
         &client,
@@ -268,6 +269,85 @@ name: foooooo
             .is_ok(),
         "project should be in error state"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_recreate_deleted_resources() -> anyhow::Result<()> {
+    let (client, _) = project::before_each().await?;
+
+    let name = project::random_name("recreate-deleted-resources");
+    let _ = project::install_project(&client, &name).await?;
+
+    let api: kube::Api<Project> = kube::Api::all(client.clone());
+
+    let _ =
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges).await;
+
+    let pod_api = kube::Api::<Pod>::namespaced(client.clone(), &name);
+    assert!(
+        wait_for_state(&pod_api, &"foo".to_string(), WaitForState::Created)
+            .await
+            .is_ok()
+    );
+
+    loop {
+        debug!("waiting for foo pod to be running");
+        if let Ok(pod) = pod_api.get("foo").await {
+            match pod.status {
+                Some(PodStatus {
+                    phase: Some(phase), ..
+                }) if phase.as_str() == "Running" => break,
+                _ => {}
+            }
+        }
+
+        time::sleep(Duration::from_secs(1)).await
+    }
+
+    let _ = pod_api
+        .delete(
+            "foo",
+            &DeleteParams {
+                dry_run: false,
+                grace_period_seconds: Some(0),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    loop {
+        debug!("waiting for foo pod to be gone");
+        if pod_api.get("foo").await.is_err() {
+            break;
+        }
+        time::sleep(Duration::from_secs(1)).await
+    }
+
+    let mut project = api.get(&name).await?;
+    let resource_version = project.resource_version();
+    project.spec = ProjectSpec {
+        owners: vec!["newowner@example.com".to_string()],
+        manifest_values: project.spec.manifest_values,
+    };
+    let meta = project.meta_mut();
+    meta.resource_version = resource_version;
+    meta.managed_fields = None;
+
+    if let Err(e) = api.replace(&name, &PostParams::default(), &project).await {
+        panic!("error updating project: {:?}:\n{:?}", &project, e);
+    }
+
+    assert!(
+        project::assert_project_is_in_phase(&client, &name, ProjectPhase::WaitingForChanges)
+            .await
+            .is_ok(),
+        "project should be in waiting state"
+    );
+
+    assert!(pod_api.get("foo").await.is_ok());
 
     Ok(())
 }

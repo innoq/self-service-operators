@@ -1,6 +1,6 @@
 # Self Service Operators
 
-** Note: ** Readme is slightly outdated atm
+**Note:** Readme is slightly outdated atm
 
 <!-- toc -->
 
@@ -10,6 +10,7 @@
   * [Configuration](#configuration)
     + [Via Helm](#via-helm)
     + [Example](#example)
+  * [Running tests](#running-tests)
 
 <!-- tocstop -->
 
@@ -115,3 +116,18 @@ project.selfservice.innoq.io/permisssion.view-sa: skip
 ```
 
 Note, that the manifests are not limited to rolebindings and service accounts -- it's as well possible to apply a job that should run on namespace creation or to add a deployment, etc.
+
+### Running tests
+
+This operator contains a lot of integration tests. In order to run tests, the test suite statically uses the Kubernetes config 
+
+    ./kind.kubeconfig
+
+in order to not accidentally run tests on a real cluster. If you need extensive logging during testing, set the logging level accordingly:
+
+    # run tests and output debug messages from test modules
+    RUST_LOG="r#mod::project=debug" cargo test -- --nocapture
+
+    # run tests and output debug messages from test modules and the self service itself
+    RUST_LOG="r#mod::project=debug,self_service_operators=debug" cargo test -- --nocapture
+

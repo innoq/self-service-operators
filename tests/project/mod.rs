@@ -106,7 +106,7 @@ pub async fn get_client() -> Result<(kube::Config, kube::Client), anyhow::Error>
     Ok((config, client))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum WaitForState {
     Deleted,
     Created,
@@ -259,14 +259,16 @@ where
                         break;
                     }
 
-                    debug!(
+                    let msg = format!(
                         "  - too early to watch {} with name {} (event: {:?})",
                         api.resource_url(),
                         &name,
                         &state
                     );
+                    debug!("{}", msg);
                     tokio::time::sleep(time::Duration::from_millis(250)).await;
-                    panic!("");
+                    let _ = wait_for_state(&api, &name, state).await;
+                    break;
                 }
                 Err(e) => {
                     debug!(
@@ -287,6 +289,12 @@ pub async fn install_project(
     client: &kube::Client,
     #[allow(clippy::ptr_arg)] name: &String,
 ) -> anyhow::Result<Project> {
+    let _ = env_logger::builder()
+        // Ensure events are captured by `cargo test`
+        .is_test(true)
+        // Ignore errors initializing the logger if tests race to configure it
+        .try_init();
+
     let timeout_secs = 20;
 
     let wait_for_namespace_created_handle = wait_for_state(
