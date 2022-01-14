@@ -97,7 +97,7 @@ array:
         res = wait_for_pod_created_handle => res.is_ok(),
         _ = time::sleep(Duration::from_secs(timeout_secs)) => false
         },
-        "namespace '{}' should contain a pod called 'pod-sa' should be present after {} seconds",
+        "namespace '{}' should contain a pod called 'pod-sa' after {} seconds",
         name,
         timeout_secs
     );
@@ -143,6 +143,92 @@ array:
             .await
             .is_ok(),
         "project should be in waiting state"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
+    let (client, _) = project::before_each().await?;
+
+    let name = project::random_name("apply-once-resources");
+    let timeout_secs = 20;
+
+    project::apply_manifest_secret(
+        &client,
+        "extra-manifests",
+        vec![include_str!("../../fixtures/apply-once-resource.yaml")],
+    )
+    .await?;
+
+    let mut annotations = BTreeMap::new();
+    annotations.insert(
+        "project.selfservice.innoq.io/extra-manifests".to_string(),
+        "copy".to_string(),
+    );
+
+    let project = Project {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            annotations: Some(annotations),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let api: kube::Api<Project> = kube::Api::all(client.clone());
+    let _ = api.create(&PostParams::default(), &project).await;
+
+    let wait_for_pod_created_handle = project::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"once".to_string(),
+        WaitForState::Created,
+    );
+
+    assert!(
+        select! {
+        res = wait_for_pod_created_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "namespace '{}' should contain a pod called 'once' after {} seconds",
+        name,
+        timeout_secs
+    );
+
+    let wait_for_pod_deleted_handle = project::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"once".to_string(),
+        WaitForState::Deleted,
+    );
+
+    kube::Api::<Pod>::namespaced(client.clone(), &name)
+        .delete("once", &DeleteParams::default())
+        .await?;
+
+    assert!(
+        select! {
+        res = wait_for_pod_deleted_handle => res.is_ok(),
+        _ = time::sleep(Duration::from_secs(timeout_secs)) => false
+        },
+        "namespace '{}' should not contain a pod called 'once' anymore after {} seconds",
+        name,
+        timeout_secs
+    );
+
+    let wait_for_pod_created_handle = project::wait_for_state(
+        &kube::Api::<Pod>::namespaced(client.clone(), &name),
+        &"once".to_string(),
+        WaitForState::Created,
+    );
+
+    assert!(
+        select! {
+        res = wait_for_pod_created_handle => res.is_err(),
+        _ = time::sleep(Duration::from_secs(20)) => true
+        },
+        "pod 'once' should not be recreated",
     );
 
     Ok(())

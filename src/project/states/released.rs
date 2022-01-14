@@ -16,11 +16,12 @@
 
 use std::sync::Arc;
 
+use crate::project::operator::ProjectOperatorState;
 use krator::{Manifest, State, Transition};
 use tokio::sync::RwLock;
 
 use crate::project::project_status::ProjectStatus;
-use crate::project::states::{ProjectState, SharedState};
+use crate::project::states::ProjectState;
 use crate::project::Project;
 
 #[derive(Debug, Default)]
@@ -31,7 +32,7 @@ pub struct Released;
 impl State<ProjectState> for Released {
     async fn next(
         self: Box<Self>,
-        _shared: Arc<RwLock<SharedState>>,
+        _shared: Arc<RwLock<ProjectOperatorState>>,
         state: &mut ProjectState,
         _manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
@@ -42,12 +43,17 @@ impl State<ProjectState> for Released {
     async fn status(
         &self,
         state: &mut ProjectState,
-        _manifest: &Project,
+        project: &Project,
     ) -> anyhow::Result<ProjectStatus> {
         Ok(ProjectStatus {
             phase: None,
             message: Some(format!("Bye, {}!", state.name)),
             summary: Some(format!("Bye, {}!", state.name)),
+            applied_one_shot_resources: project
+                .status
+                .clone()
+                .unwrap_or_else(ProjectStatus::default)
+                .applied_one_shot_resources,
         })
     }
 }

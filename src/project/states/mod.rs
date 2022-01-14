@@ -15,7 +15,7 @@
  */
 
 use core::clone::Clone;
-use std::time::Duration;
+use std::collections::HashSet;
 
 use krator::ObjectState;
 pub use schemars::JsonSchema;
@@ -27,6 +27,7 @@ pub(crate) use error::Error;
 pub(crate) use released::Released;
 pub(crate) use wait_for_changes::WaitForChanges;
 
+use crate::project::operator::ProjectOperatorState;
 pub use crate::project::project_status::ProjectStatus;
 pub use crate::project::{project::DEFAULT_MANIFESTS_SECRET, Project, ProjectSpec};
 
@@ -48,38 +49,15 @@ pub enum ProjectPhase {
 }
 
 pub struct ProjectState {
-    pub(crate) name: String,
-    pub(crate) _spec: ProjectSpec,
-    pub(crate) error: String,
+    pub name: String,
+    pub error: String,
+    pub applied_one_shot_resources: HashSet<String>,
 }
 
 #[async_trait::async_trait]
 impl ObjectState for ProjectState {
     type Manifest = Project;
     type Status = ProjectStatus;
-    type SharedState = SharedState;
+    type SharedState = ProjectOperatorState;
     async fn async_drop(self, _shared: &mut Self::SharedState) {}
-}
-
-pub struct SharedState {
-    pub(crate) client: kube::Client,
-    pub(crate) default_manifests_secret: String,
-    pub(crate) default_ns: String,
-    pub(crate) manifest_retry_delay: Duration,
-}
-
-impl Default for SharedState {
-    fn default() -> Self {
-        SharedState {
-            default_manifests_secret: DEFAULT_MANIFESTS_SECRET.to_string(),
-            manifest_retry_delay: Duration::from_secs(5),
-            ..Default::default()
-        }
-    }
-}
-
-impl SharedState {
-    pub fn client(&self) -> kube::Client {
-        self.client.clone()
-    }
 }

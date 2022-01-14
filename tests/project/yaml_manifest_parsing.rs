@@ -17,8 +17,10 @@
 use k8s_openapi::api::core::v1::{Pod, Secret, ServiceAccount};
 use kube::api::DeleteParams;
 use serial_test::serial;
+use std::collections::HashSet;
 
-use self_service_operators::project::states::apply_manifests;
+use self_service_operators::project::states::apply_manifests::is_one_shot_resource;
+use self_service_operators::project::states::{apply_manifests, ProjectState};
 use self_service_operators::project::Project;
 use self_service_operators::project::ProjectSpec;
 
@@ -85,7 +87,7 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     let (client, _) = project::before_each().await?;
 
     let name = project::random_name("apply-manifest");
-    let project = project::install_project(&client, &name).await?;
+    let mut project = project::install_project(&client, &name).await?;
 
     let api = kube::Api::<ServiceAccount>::namespaced(client.clone(), &name);
     project::wait_for_state(&api, &"default".to_string(), WaitForState::Created).await?;
@@ -111,7 +113,17 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     // Create a pod from YAML
     let pod_manifest = include_str!("../fixtures/pod2.yaml");
     let templated_manifest = project.render(&pod_manifest, "foo");
-    apply_manifests::apply_yaml_manifest(&client, &templated_manifest.unwrap(), &project).await?;
+    apply_manifests::apply_yaml_manifest(
+        &client,
+        &templated_manifest.unwrap(),
+        &mut project,
+        &mut ProjectState {
+            name: name.clone(),
+            error: "".to_string(),
+            applied_one_shot_resources: HashSet::new(),
+        },
+    )
+    .await?;
 
     let pod = kube::Api::<Pod>::namespaced(client.clone(), name.as_str())
         .get("bar")
@@ -131,6 +143,25 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     kube::Api::<Project>::all(client.clone())
         .delete(name.as_str(), &DeleteParams::default())
         .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn it_detects_one_shot_manifests_correctly() -> anyhow::Result<()> {
+    let (_, _) = project::before_each().await?;
+
+    let project = Project::new("xxx", ProjectSpec::default());
+
+    let pod_manifest =
+        project.render(include_str!("../fixtures/apply-once-resource.yaml"), "foo")?;
+
+    assert_eq!(is_one_shot_resource(&pod_manifest).unwrap(), true);
+
+    let pod_manifest = project.render(include_str!("../fixtures/pod.yaml"), "foo")?;
+
+    assert_eq!(is_one_shot_resource(&pod_manifest).unwrap(), false);
 
     Ok(())
 }

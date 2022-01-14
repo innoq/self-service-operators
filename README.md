@@ -127,7 +127,20 @@ in order to not accidentally run tests on a real cluster. If you need extensive 
 
     # run tests and output debug messages from test modules
     RUST_LOG="r#mod::project=debug" cargo test -- --nocapture
-
+    
     # run tests and output debug messages from test modules and the self service itself
     RUST_LOG="r#mod::project=debug,self_service_operators=debug" cargo test -- --nocapture
+
+# Installing helm chart from repo with self-built Image
+
+The default configuration for the helm chart ist to use image `ghcr.io/innoq/self-service-operators` with the tag being set to the app version. In order to test a locally build image, create a special docker tag and overwrite image tag during deployment:
+
+```
+docker build --progress=plain -t ghcr.io/innoq/self-service-operators:local-build .
+
+# if you use the kind cluster with the local-kind-cluster.sh-Script
+./local-kind-cluster.sh load_image ghcr.io/innoq/self-service-operators:local-build
+helm upgrade --install --namespace ssp --create-namespace --set image.tag=local-build ssp ./charts/self-service-operators
+
+```
 

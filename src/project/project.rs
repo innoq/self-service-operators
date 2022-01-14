@@ -39,6 +39,9 @@ pub const COPY_ANNOTATION_BASE: &str = "project.selfservice.innoq.io";
 pub const COPY_ANNOTATION_COPY_VALUE: &str = "copy";
 pub const COPY_ANNOTATION_SKIP_VALUE: &str = "skip";
 
+pub const ONE_SHOT_MANIFEST_ANNOTATION_KEY: &str = "project.selfservice.innoq.io/apply";
+pub const ONE_SHOT_MANIFEST_ANNOTATION_VALUE_ONCE: &str = "once";
+
 pub trait Sample {
     fn sample() -> Self;
 }
@@ -69,8 +72,7 @@ pub trait Sample {
      {"name":"Owner", "type":"string", "description":"owner of this project", "jsonPath":".spec.owner"},
      {"name":"Private", "type":"string", "description":"whether the project's namespace is private", "jsonPath":".spec.private"},
      {"name":"Age", "type":"date", "description":"how old this resource is", "jsonPath":".metadata.creationTimestamp"},
-     {"name":"Phase", "type":"string", "description":"current phase of this resource", "jsonPath":".status.phase"},
-     {"name":"Status summary", "type":"string", "description":"current status", "jsonPath":".status.summary"}
+     {"name":"Phase", "type":"string", "description":"current phase of this resource", "jsonPath":".status.phase"}, {"name":"Status summary", "type":"string", "description":"current status", "jsonPath":".status.summary"}
   "#
 )]
 pub struct ProjectSpec {

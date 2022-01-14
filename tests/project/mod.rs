@@ -34,7 +34,7 @@ use self_service_operators::project::operator::ProjectOperator;
 use self_service_operators::project::project::{
     DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
 };
-use self_service_operators::project::{ProjectSpec, ProjectStatus, Sample};
+use self_service_operators::project::{ProjectSpec, Sample};
 
 use self_service_operators::project::states::ProjectPhase;
 use self_service_operators::project::Project;
@@ -399,18 +399,19 @@ pub async fn assert_project_is_in_phase(
     let mut current_project_phase = None;
 
     let api: kube::Api<Project> = kube::Api::all(client.clone());
-    for _ in 0..60 {
+    for _ in 0..10 {
         let _ = tokio::time::sleep(Duration::from_secs(1)).await;
         let project = api.get(&name).await?;
 
-        let status: &ProjectStatus = &project.status.clone().unwrap();
-        current_project_phase = status.phase.clone();
+        if let Some(status) = &project.status.clone() {
+            current_project_phase = status.phase.clone();
 
-        if current_project_phase.is_some()
-            && std::mem::discriminant(current_project_phase.as_ref().unwrap())
-                == std::mem::discriminant(&phase)
-        {
-            return Ok(());
+            if current_project_phase.is_some()
+                && std::mem::discriminant(current_project_phase.as_ref().unwrap())
+                    == std::mem::discriminant(&phase)
+            {
+                return Ok(());
+            }
         }
     }
 

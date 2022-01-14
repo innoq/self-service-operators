@@ -26,10 +26,15 @@ use krator::{Manifest, State, Transition};
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
+use crate::project::operator::ProjectOperatorState;
+use crate::project::project::{
+    ONE_SHOT_MANIFEST_ANNOTATION_KEY, ONE_SHOT_MANIFEST_ANNOTATION_VALUE_ONCE,
+};
 use crate::project::project_status::ProjectStatus;
-use crate::project::states::{Error, SharedState};
+use crate::project::states::Error;
 use crate::project::states::{ProjectPhase, ProjectState, WaitForChanges};
 use crate::project::Project;
+use serde_yaml::Value;
 use std::ops::Mul;
 
 #[derive(Debug, Default)]
@@ -39,7 +44,7 @@ pub(crate) struct ApplyManifests;
 impl State<ProjectState> for ApplyManifests {
     async fn next(
         self: Box<Self>,
-        shared: Arc<RwLock<SharedState>>,
+        shared: Arc<RwLock<ProjectOperatorState>>,
         state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
@@ -70,7 +75,9 @@ impl State<ProjectState> for ApplyManifests {
                 let mut iteration_counter = 0;
                 let max_retries = 5;
                 while let Some((i, manifest)) = manifests.pop() {
-                    if let Err(e) = apply_yaml_manifest(&shared.client, &manifest, &project).await {
+                    if let Err(e) =
+                        apply_yaml_manifest(&shared.client, &manifest, &project, state).await
+                    {
                         if i >= max_retries {
                             state.error = format!(
                                 "error installing manifest: giving up after {} retries: {}\nmanifest was:\n{}",
@@ -99,24 +106,49 @@ impl State<ProjectState> for ApplyManifests {
 
     async fn status(
         &self,
-        _state: &mut ProjectState,
-        _manifest: &Project,
+        state: &mut ProjectState,
+        project: &Project,
     ) -> anyhow::Result<ProjectStatus> {
         debug!("status() in ApplyManifests");
+
+        let applied_one_shot_resources = (project.status.clone() as Option<ProjectStatus>)
+            .unwrap_or_else(ProjectStatus::default)
+            .applied_one_shot_resources
+            .into_iter()
+            .collect();
+
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::ApplyingManifests),
             message: Some("applying configured manifests".to_string()),
             summary: Some("applying configured manifests".to_string()),
+            applied_one_shot_resources: (&applied_one_shot_resources
+                | &state.applied_one_shot_resources)
+                .into_iter()
+                .collect(),
         })
     }
 }
+
+const FIELD_MANAGER_QUERY_ARG: &str = "fieldManager=self-service-operator&force=true";
 
 pub async fn apply_yaml_manifest(
     client: &kube::Client,
     yaml_manifest: &str,
     project: &Project,
+    state: &mut ProjectState,
 ) -> anyhow::Result<()> {
     let path = resource_path(&client, yaml_manifest).await?;
+
+    let is_one_shot_resource = is_one_shot_resource(yaml_manifest)?;
+
+    let applied_one_shot_resources = (project.status.clone() as Option<ProjectStatus>)
+        .unwrap_or_else(ProjectStatus::default)
+        .applied_one_shot_resources;
+
+    if is_one_shot_resource && applied_one_shot_resources.contains(&path) {
+        info!("one shot resource {} already applied, skipping", &path);
+        return Ok(());
+    }
 
     let manifest = add_owner_to_yaml_manifest(yaml_manifest, &project)?;
 
@@ -130,10 +162,7 @@ pub async fn apply_yaml_manifest(
     if client.request_text(get_request).await.is_ok() {
         // update resource
         request = Request::builder()
-            .uri(format!(
-                "{}?fieldManager=self-service-operator&force=true",
-                &path
-            ))
+            .uri(format!("{}?{}", &path, FIELD_MANAGER_QUERY_ARG))
             .method("PATCH")
             .header("Content-Type", "application/apply-patch+yaml")
             .body(manifest.into())
@@ -143,8 +172,9 @@ pub async fn apply_yaml_manifest(
         let path = Path::new(&path).parent().unwrap();
         request = Request::builder()
             .uri(format!(
-                "{}?fieldManager=self-service-operator&force=true",
-                &path.display().to_string()
+                "{}?{}",
+                &path.display().to_string(),
+                FIELD_MANAGER_QUERY_ARG
             ))
             .method("POST")
             .header("Content-Type", "application/yaml")
@@ -153,7 +183,12 @@ pub async fn apply_yaml_manifest(
     }
 
     match client.request_text(request).await {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            if is_one_shot_resource {
+                state.applied_one_shot_resources.insert(path.to_string());
+            }
+            Ok(())
+        }
         Err(e) => bail!("error applying manifest: {}", e.to_string()),
     }
 }
@@ -171,6 +206,22 @@ pub fn add_owner_to_yaml_manifest(
     let owned_manifest_as_string = serde_yaml::to_string(&yaml)?;
 
     Ok(owned_manifest_as_string)
+}
+
+pub fn is_one_shot_resource(yaml_manifest: &str) -> anyhow::Result<bool> {
+    let yaml: serde_yaml::Value = serde_yaml::from_str(yaml_manifest)?;
+
+    if let serde_yaml::Value::Mapping(annotations) = &yaml["metadata"]["annotations"] {
+        if annotations.get(&Value::String(ONE_SHOT_MANIFEST_ANNOTATION_KEY.to_string()))
+            == Some(&Value::String(
+                ONE_SHOT_MANIFEST_ANNOTATION_VALUE_ONCE.to_string(),
+            ))
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 pub async fn resource_path(client: &kube::Client, yaml_manifest: &str) -> anyhow::Result<String> {

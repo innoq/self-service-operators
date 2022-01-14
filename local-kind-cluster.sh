@@ -48,7 +48,7 @@ compl() {                        # print code for bash completion; execute with 
 
 _install_kind() {
   test -e ./kind && return
-  curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-$(uname)-amd64
+  curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-$(uname)-$(uname -m|sed 's/x86_64/amd64/')
   chmod +x ./kind
 }
 
@@ -62,6 +62,7 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
+  image: kindest/node:v1.21.1@sha256:69860bda5563ac81e3c0057d654b5253219618a22ec3a346306239bba8cfa1a6
   kubeadmConfigPatches:
   - |
     apiVersion: kubeadm.k8s.io/v1beta2
@@ -77,7 +78,7 @@ nodes:
     hostPort: ${INGRESS_PORT_HTTPS}
 	EOF
 
-  ./kind create cluster  --name ${CLUSTER_NAME} --kubeconfig ${KINDCONFIG} --config kind.conf
+  ./kind create cluster  --retain -v 1 --name ${CLUSTER_NAME} --kubeconfig ${KINDCONFIG} --config kind.conf
 
   printf "waiting for node to become ready "
   (set +x

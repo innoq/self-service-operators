@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,14 +28,16 @@ use krator::{Manifest, Operator};
 use kube::{Api, Resource};
 use tokio::sync::RwLock;
 
-use crate::project::project::{SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE};
+use crate::project::project::{
+    DEFAULT_MANIFESTS_SECRET, SECRET_ANNOTATION_KEY, SECRET_ANNOTATION_VALUE,
+};
 use crate::project::project_status::ProjectStatus;
-use crate::project::states::{CreateNamespace, ProjectState, Released, SharedState};
+use crate::project::states::{CreateNamespace, ProjectState, Released};
 use crate::project::Project;
 
 #[derive(Clone)]
 pub struct ProjectOperator {
-    shared: Arc<RwLock<SharedState>>,
+    shared: Arc<RwLock<ProjectOperatorState>>,
 }
 
 impl ProjectOperator {
@@ -44,7 +47,7 @@ impl ProjectOperator {
         default_manifests_secret: &str,
         manifest_retry_delay: Duration,
     ) -> anyhow::Result<Self> {
-        let shared = Arc::new(RwLock::new(SharedState {
+        let shared = Arc::new(RwLock::new(ProjectOperatorState {
             client: client.clone(),
             default_ns: default_ns.to_string(),
             default_manifests_secret: default_manifests_secret.to_string(),
@@ -74,15 +77,14 @@ impl Operator for ProjectOperator {
         manifest: &Self::Manifest,
     ) -> anyhow::Result<Self::ObjectState> {
         let name = manifest.meta().name.clone().unwrap();
-        let spec = manifest.spec.clone();
         Ok(ProjectState {
             name,
-            _spec: spec,
             error: "".to_string(),
+            applied_one_shot_resources: HashSet::new(),
         })
     }
 
-    async fn shared_state(&self) -> Arc<RwLock<SharedState>> {
+    async fn shared_state(&self) -> Arc<RwLock<ProjectOperatorState>> {
         Arc::clone(&self.shared)
     }
 
@@ -207,4 +209,27 @@ pub async fn get_manifests_secret(
         );
 
     Ok(secret)
+}
+
+pub struct ProjectOperatorState {
+    pub(crate) client: kube::Client,
+    pub(crate) default_manifests_secret: String,
+    pub(crate) default_ns: String,
+    pub(crate) manifest_retry_delay: Duration,
+}
+
+impl Default for ProjectOperatorState {
+    fn default() -> Self {
+        ProjectOperatorState {
+            default_manifests_secret: DEFAULT_MANIFESTS_SECRET.to_string(),
+            manifest_retry_delay: Duration::from_secs(5),
+            ..Default::default()
+        }
+    }
+}
+
+impl ProjectOperatorState {
+    pub fn client(&self) -> kube::Client {
+        self.client.clone()
+    }
 }

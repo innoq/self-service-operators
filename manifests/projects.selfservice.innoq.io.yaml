@@ -59,6 +59,10 @@ spec:
               description: Reflects the status of the current self service project
               nullable: true
               properties:
+                appliedOneShotResources:
+                  items:
+                    type: string
+                  type: array
                 message:
                   nullable: true
                   type: string
@@ -75,6 +79,8 @@ spec:
                 summary:
                   nullable: true
                   type: string
+              required:
+                - appliedOneShotResources
               type: object
           required:
             - spec

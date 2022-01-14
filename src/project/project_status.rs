@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use handlebars::JsonValue;
 use krator::ObjectStatus;
 
 pub use schemars::JsonSchema;
@@ -22,11 +23,24 @@ use crate::project::states::ProjectPhase;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[doc = "Reflects the status of the current self service project"]
 pub struct ProjectStatus {
     pub phase: Option<ProjectPhase>,
     pub message: Option<String>,
     pub summary: Option<String>,
+    pub applied_one_shot_resources: Vec<String>,
+}
+
+impl Default for ProjectStatus {
+    fn default() -> Self {
+        ProjectStatus {
+            phase: None,
+            message: None,
+            summary: None,
+            applied_one_shot_resources: vec![],
+        }
+    }
 }
 
 impl ObjectStatus for ProjectStatus {
@@ -48,6 +62,17 @@ impl ObjectStatus for ProjectStatus {
             status.insert("summary".to_string(), serde_json::Value::String(summary));
         };
 
+        status.insert(
+            "appliedOneShotResources".to_string(),
+            serde_json::Value::Array(
+                self.applied_one_shot_resources
+                    .clone()
+                    .iter()
+                    .map(|x| serde_json::to_value(x).unwrap())
+                    .collect::<Vec<JsonValue>>(),
+            ),
+        );
+
         // Create status patch with map.
         serde_json::json!({ "status": serde_json::Value::Object(status) })
     }
@@ -58,6 +83,7 @@ impl ObjectStatus for ProjectStatus {
             summary: Some(crate::project::shorten_string(&message)),
             message: Some(message),
             phase: None,
+            applied_one_shot_resources: vec![],
         }
     }
 }

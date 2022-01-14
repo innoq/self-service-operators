@@ -17,12 +17,13 @@
 use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
 
+use crate::project::operator::ProjectOperatorState;
 use krator::{Manifest, State, Transition};
 use kube::api::{ListParams, WatchEvent};
 use tokio::sync::RwLock;
 
 use crate::project::project_status::ProjectStatus;
-use crate::project::states::{CreateNamespace, ProjectPhase, ProjectState, SharedState};
+use crate::project::states::{CreateNamespace, ProjectPhase, ProjectState};
 use crate::project::Project;
 
 #[derive(Debug, Default)]
@@ -33,7 +34,7 @@ pub struct Error;
 impl State<ProjectState> for Error {
     async fn next(
         self: Box<Self>,
-        shared: Arc<RwLock<SharedState>>,
+        shared: Arc<RwLock<ProjectOperatorState>>,
         state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
@@ -78,7 +79,7 @@ impl State<ProjectState> for Error {
     async fn status(
         &self,
         state: &mut ProjectState,
-        _manifest: &Project,
+        project: &Project,
     ) -> anyhow::Result<ProjectStatus> {
         debug!("status() in Error");
         let message = format!("error: {}", state.error);
@@ -86,6 +87,11 @@ impl State<ProjectState> for Error {
             phase: Some(ProjectPhase::FailedDueToError),
             summary: Some(crate::project::shorten_string(&message)),
             message: Some(message),
+            applied_one_shot_resources: project
+                .status
+                .clone()
+                .unwrap_or_else(ProjectStatus::default)
+                .applied_one_shot_resources,
         })
     }
 }

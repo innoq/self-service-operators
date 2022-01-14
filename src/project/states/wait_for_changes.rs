@@ -16,6 +16,7 @@
 
 use std::sync::Arc;
 
+use crate::project::operator::ProjectOperatorState;
 use futures::{StreamExt, TryStreamExt};
 use krator::{Manifest, State, Transition};
 use kube::api::{ListParams, WatchEvent};
@@ -24,7 +25,7 @@ use tokio::sync::RwLock;
 use crate::project::project_status::ProjectStatus;
 use crate::project::states::create_namespace::CreateNamespace;
 use crate::project::states::error::Error;
-use crate::project::states::{ProjectPhase, ProjectState, SharedState};
+use crate::project::states::{ProjectPhase, ProjectState};
 use crate::project::Project;
 
 #[derive(Debug, Default)]
@@ -35,7 +36,7 @@ pub(crate) struct WaitForChanges;
 impl State<ProjectState> for WaitForChanges {
     async fn next(
         self: Box<Self>,
-        shared: Arc<RwLock<SharedState>>,
+        shared: Arc<RwLock<ProjectOperatorState>>,
         state: &mut ProjectState,
         manifest: Manifest<Project>,
     ) -> Transition<ProjectState> {
@@ -78,13 +79,18 @@ impl State<ProjectState> for WaitForChanges {
     async fn status(
         &self,
         _state: &mut ProjectState,
-        _manifest: &Project,
+        project: &Project,
     ) -> anyhow::Result<ProjectStatus> {
         debug!("status() in WaitForChanges");
         Ok(ProjectStatus {
             phase: Some(ProjectPhase::WaitingForChanges),
             message: Some("waiting for changes".to_string()),
             summary: Some("waiting for changes".to_string()),
+            applied_one_shot_resources: project
+                .status
+                .clone()
+                .unwrap_or_else(ProjectStatus::default)
+                .applied_one_shot_resources,
         })
     }
 }
