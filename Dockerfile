@@ -11,21 +11,24 @@
 #
 ARG COMPRESSION_FACTOR="-9"
 
-ARG RUST_BUILDER_IMAGE=docker.io/ekidd/rust-musl-builder:latest
+ARG RUST_BUILDER_IMAGE=docker.io/rust:latest
 
 # sensible choices are scratch, docker.io/busybox (if you need a shell), docker.io/alpine (if you need a shell + package manager)
 ARG RUNTIME_IMAGE=scratch
 
 #ARG TARGET=x86_64-unknown-linux-musl
-ARG TARGET=x86_64-unknown-linux-gnu
+#ARG TARGET=x86_64-unknown-linux-gnu
+#ARG TARGET=aarch64-unknown-linux-gnu
+ARG TARGET=
 
 ARG BIN=self-service-project-operator
 ARG ARTIFACT=target/${TARGET}/release/${BIN}
 
 ################################################### planner stage (collect dependencies)
 FROM ${RUST_BUILDER_IMAGE} as planner
+ARG TARGET
 WORKDIR /app
-RUN cargo install cargo-chef
+RUN cargo install ${TARGET:+--target=}${TARGET} cargo-chef
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -35,17 +38,17 @@ WORKDIR /app
 ARG TARGET
 RUN cargo install cargo-chef
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --target="${TARGET}" --release --recipe-path recipe.json
+RUN cargo chef cook ${TARGET:+--target=}${TARGET} --release --recipe-path recipe.json
 
 ################################################### builder stage (build binary)
 FROM ${RUST_BUILDER_IMAGE} as builder
 WORKDIR /app
 ARG TARGET
 ARG ARTIFACT
-COPY --from=cacher /home/rust/.cargo /home/rust/.cargo
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
 COPY --from=cacher /app/target target
 COPY --chown=rust:rust . .
-RUN cargo build --target="${TARGET}" --release --bin self-service-project-operator
+RUN cargo build ${TARGET:+--target=}${TARGET} --release --bin self-service-project-operator
 RUN strip ${ARTIFACT}
 
 # get all dynamic dependencies
@@ -65,12 +68,12 @@ RUN bash -c "echo ${ARTIFACT} > /tmp/deps;\
     touch /tmp/buildroot"
 
 ################################################### compressor stage (compress binary)
-FROM docker.io/alpine as compressor
+FROM docker.io/ubuntu as compressor
 ARG ARTIFACT
 ARG BIN
 ARG COMPRESSION_FACTOR
 WORKDIR /app
-RUN apk add --no-cache upx
+RUN apt-get update && apt-get install -y upx ca-certificates
 COPY --from=builder /app/${ARTIFACT} /app/${ARTIFACT}
 RUN cd /app && ln -sf ${ARTIFACT} app
 RUN upx ${COMPRESSION_FACTOR} ${ARTIFACT}
