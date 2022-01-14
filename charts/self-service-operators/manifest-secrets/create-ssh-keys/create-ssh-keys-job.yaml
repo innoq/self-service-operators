@@ -3,6 +3,8 @@ kind: Job
 metadata:
   name: ssh-key-creator
   namespace: {{ __PROJECT_NAME__ }}
+  annotations:
+    project.selfservice.innoq.io/apply: once
 spec:
   template:
     spec:
@@ -17,7 +19,7 @@ spec:
         name: ssh-key-creator
         command:
           - sh
-          - -ec
+          - -exc
           - |
             apk add curl openssh-keygen jq
 
@@ -30,38 +32,41 @@ spec:
               echo "${data}" > /tmp/data
               test "${method}" = "PATCH" && local content_type='Content-Type: application/merge-patch+json' || local content_type='Content-Type: application/json'
 
-              curl -fk -X ${method} -H "Accept: application/json, */*" -H "${content_type}" \
+              (set -x;
+              curl -i -fk -X ${method} -H "Accept: application/json, */*" -H "${content_type}" \
                 -H"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
                 ${data:+-d@/tmp/data} \
                 "https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}${resource}?fieldManager=create-ssh-keys-job"
+                )
             }
 
             # create ssh key pair
             ssh-keygen -t rsa -b 4096 -C "ssh key generated for project '{{ __PROJECT_NAME__ }}' by projects.selfservice.innoq.io manifest" -f id_rsa -N ""
 
-            # save public key in a config map that will be accessible by everybody
+            # save public key in a config map that will be accessible by everyone
             echo '{"kind":"ConfigMap","apiVersion":"v1","metadata":{"name":"'${PUBLIC_KEY_SECRET_NAME}'"},"data":{"id_rsa.pub":"'$(cat id_rsa.pub)'"}}' | \
                jq -r > public-key.json
 
-            # save keypair in a secret ... putting public key her as well for convinience
+            # save keypair in a secret ... putting public key here as well for convinience
             echo '{"kind":"Secret","apiVersion":"v1","metadata":{"name":"'${KEY_PAIR_SECRET_NAME}'"},"data":{"id_rsa":"'$(cat id_rsa|base64 -w0)'","id_rsa.pub":"'$(cat id_rsa.pub|base64 -w0)'"}}' | \
               jq -r > keypair.json
 
             kubecurl POST /api/v1/namespaces/{{ __PROJECT_NAME__ }}/configmaps "$(cat public-key.json)"
             kubecurl POST /api/v1/namespaces/{{ __PROJECT_NAME__ }}/secrets    "$(cat keypair.json)"
 
-            
+            # own all resources that should be deleted after this job has finished
+            reference='{"metadata":{"ownerReferences":[{"apiVersion":"v1","kind":"Pod","name":"'${MY_NAME}'","uid":"'${MY_UID}'"}]}}'
+            for resource in /apis/rbac.authorization.k8s.io/v1/namespaces/{{ __PROJECT_NAME__ }}/roles \
+                            /apis/rbac.authorization.k8s.io/v1/namespaces/{{ __PROJECT_NAME__ }}/rolebindings \
+                            /api/v1/namespaces/{{ __PROJECT_NAME__ }}/serviceaccounts
+            do
+              kubecurl PATCH ${resource}/ssh-key-creator '{"metadata":{"ownerReferences":null}}'
+              echo "PATCH 1"; sleep 1;
+              kubecurl PATCH ${resource}/ssh-key-creator "${reference}"
+              echo "PATCH 2"; sleep 1;
+            done
 
-            # # own all resources that should be deleted after this job has finished
-            # reference='{"metadata":{"ownerReferences":[{"apiVersion":"v1","kind":"Pod","name":"'${MY_NAME}'","uid":"'${MY_UID}'"}]}}'
-            # for resource in /apis/rbac.authorization.k8s.io/v1/namespaces/{{ __PROJECT_NAME__ }}/roles \
-            #                 /apis/rbac.authorization.k8s.io/v1/namespaces/{{ __PROJECT_NAME__ }}/rolebindings \
-            #                 /api/v1/namespaces/{{ __PROJECT_NAME__ }}/serviceaccounts
-            # do
-            #   kubecurl PATCH ${resource}/ssh-key-creator '{"metadata":{"ownerReferences":null}}'
-            #   kubecurl PATCH ${resource}/ssh-key-creator "${reference}"
-            # done
 
-            # tail -f /dev/null
+            kubecurl DELETE /apis/batch/v1/namespaces/{{ __PROJECT_NAME__ }}/jobs/ssh-key-creator '{"propagationPolicy":"Foreground"}'
 
       restartPolicy: OnFailure

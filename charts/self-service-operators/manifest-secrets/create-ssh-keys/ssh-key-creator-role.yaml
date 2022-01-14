@@ -3,6 +3,8 @@ kind: Role
 metadata:
   name: ssh-key-creator
   namespace: {{ __PROJECT_NAME__ }}
+  annotations:
+    project.selfservice.innoq.io/apply: once
 rules:
 - apiGroups:
   - ""
@@ -11,6 +13,15 @@ rules:
   - configmaps
   verbs:
   - create
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - ssh-key-creator
+  resources:
+  - roles
+  - rolebindings
+  verbs:
+  - patch
 - apiGroups:
   - rbac.authorization.k8s.io
   resourceNames:
@@ -28,3 +39,11 @@ rules:
   - serviceaccounts
   verbs:
   - patch
+- apiGroups:
+  - batch
+  resourceNames:
+  - ssh-key-creator
+  resources:
+  - jobs
+  verbs:
+  - delete

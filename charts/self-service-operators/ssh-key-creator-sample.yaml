@@ -1,0 +1,12 @@
+# self service sample project manifest (auto-generated with 'self-service-operator --print-sample-project-manifest'):
+---
+apiVersion: selfservice.innoq.io/v1
+kind: Project
+metadata:
+  annotations:
+    project.selfservice.innoq.io/create-ssh-keys: copy
+    foo: baz123456
+  name: project-with-ssh-key
+spec:
+  owners:
+    - supradev@example.com
