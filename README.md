@@ -4,13 +4,14 @@
 
 <!-- toc -->
 
-- [Self Service Project Operator](#self-service-project-operator)
-  * [What it does](#what-it-does)
-  * [Example scenario](#example-scenario)
-  * [Configuration](#configuration)
-    + [Via Helm](#via-helm)
-    + [Example](#example)
-  * [Running tests](#running-tests)
+  * [Self Service Project Operator](#self-service-project-operator)
+    + [What it does](#what-it-does)
+    + [Example scenario](#example-scenario)
+    + [Configuration](#configuration)
+      - [Via Helm](#via-helm)
+      - [Example](#example)
+    + [Running tests](#running-tests)
+- [Installing helm chart from repo with self-built Image](#installing-helm-chart-from-repo-with-self-built-image)
 
 <!-- tocstop -->
 
