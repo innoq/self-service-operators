@@ -158,7 +158,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}.{{patch}}
             type=semver,pattern={{major}}
             type=sha
-            type=raw,value=${{ steps.version.outputs.VERSION }}-SNAPSHOT
+            type=raw,value=${{ steps.version.outputs.VERSION }}-PREVIEW
           flavor: |
             latest=auto
 
