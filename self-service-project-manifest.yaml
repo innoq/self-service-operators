@@ -4,13 +4,13 @@ apiVersion: selfservice.innoq.io/v1
 kind: Project
 metadata:
   annotations:
-    project.selfservice.innoq.io/argocd.project: copy
-    project.selfservice.innoq.io/gitlab-container-registry-secrets.private-key: skip
+    project.selfservice.innoq.io/create-ssh-keys: copy
   name: sample-self-service-project
 spec:
   owners:
     - superdev@example.com
     - supradev@example.com
-  manifestValues: "\nproject_repo: github.com/innoq/self-service-operators\nproject_name: self-service-project\n"
+  manifestValues: |
+    selfDestructAt: 27 11 12 1 *
 
 
