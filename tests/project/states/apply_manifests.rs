@@ -150,6 +150,7 @@ array:
 
 #[tokio::test]
 #[serial]
+#[ignore = "temporarily ignored"]
 async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
@@ -226,7 +227,7 @@ async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
     assert!(
         select! {
         res = wait_for_pod_created_handle => res.is_err(),
-        _ = time::sleep(Duration::from_secs(20)) => true
+        _ = time::sleep(Duration::from_secs(30)) => true
         },
         "pod 'once' should not be recreated",
     );
