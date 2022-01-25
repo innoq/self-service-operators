@@ -313,6 +313,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    needs:
+      - publish_docker_image_multiarch
     if: github.ref_type == 'tag'
 
     steps:
