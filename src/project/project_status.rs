@@ -73,6 +73,11 @@ impl ObjectStatus for ProjectStatus {
             ),
         );
 
+        debug!(
+            "patch: {}",
+            serde_json::json!({ "status": serde_json::Value::Object(status.clone()) })
+        );
+
         // Create status patch with map.
         serde_json::json!({ "status": serde_json::Value::Object(status) })
     }
