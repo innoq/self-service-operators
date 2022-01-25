@@ -58,8 +58,10 @@ jobs:
 
           echo "tagging and pushing docker image"
           (set -ex;
-            docker tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
-            docker push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/amd64 tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/amd64 push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/arm64 tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/arm64 push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
           )
 
   publish_helm_chart:

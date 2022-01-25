@@ -14,7 +14,7 @@ cat<<EOF >${temp_file}
 #
 # Release title (this will be prefixed by github with '${version}): '
 
-# Release description
+# Release description (no newline needed)
 
 
 EOF
