@@ -80,6 +80,7 @@ RUN upx ${COMPRESSION_FACTOR} ${ARTIFACT}
 
 ################################################### final stage (copy binary in run time image)
 FROM ${RUNTIME_IMAGE} as runtime
+LABEL org.opencontainers.image.description This is the self-service-operators image of https://innoq.github.io/self-service-operators
 ARG ARTIFACT
 ARG BIN
 

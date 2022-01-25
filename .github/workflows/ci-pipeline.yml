@@ -85,6 +85,9 @@ jobs:
           require_tests: true
           summary: ${{ steps.cargo_reporter.outputs.summary }}
 
+  # Build an amd64 image first as this is much faster than a multi arch
+  # image. Multi arch gets built later as well and will overwrite the
+  # docker tags
   build_docker_image_amd64:
     name: Build Docker Image (amd64)
     runs-on: ubuntu-latest
@@ -94,6 +97,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    # we don't execute this job when we do a real release (== git-tag) in
+    # order to don't screw up the release job (it could run to early and
+    # therefore only tag the amd64 image instead of the multi arch image)
+    if: github.ref_type != 'tag'
 
     steps:
       - name: Checkout repository
@@ -122,6 +130,9 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }}
           cache-to: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }},mode=max
 
+  # Build an amd64 image first as this is much faster than a multi arch
+  # image. Multi arch gets built later as well and will overwrite the
+  # docker tags
   publish_docker_image_amd64:
     name: Publish Docker Image (amd64)
     runs-on: ubuntu-latest
@@ -134,6 +145,12 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    # we don't execute this job when we do a real release (== git-tag) in
+    # order to don't screw up the release job (it could run to early and
+    # therefore only tag the amd64 image instead of the multi arch image)
+    if: github.ref_type != 'tag'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2

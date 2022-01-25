@@ -45,16 +45,16 @@ jobs:
           git_tag=$(basename ${GITHUB_REF})
 
           # wait for image to be available
-          max_tries=60 # max_tries times every 10 seconds
+          max_tries=240 # max_tries times every minute
           echo "waiting for docker image '${REGISTRY}/${IMAGE_NAME}:${git_sha}' to be available"
-          for _ in $(seq 1 120)
+          for _ in $(seq 1 ${max_tries})
           do
-            sleep 10
-            echo "."
+            sleep 60
+            echo " 😴 "
             docker pull ${REGISTRY}/${IMAGE_NAME}:${git_sha} &>/dev/null && break
           done
 
-          echo " ✅"
+          echo " ✅ "
 
           echo "tagging and pushing docker image"
           (set -ex;
