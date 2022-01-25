@@ -8,6 +8,7 @@ name: test / build / release docker image
 on:
   push:
     branches: [ '*' ]
+    tags: [ '*.*.*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch: {}
@@ -305,3 +306,91 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }}
+
+  retag_docker_image:
+    name: Create version tag for existing docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    if: github.ref_type == 'tag'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create version tag for existing docker image
+        run: |
+          git_sha=sha-$(git rev-parse --short HEAD)
+          git_tag=$(basename ${GITHUB_REF})
+
+          # wait for image to be available
+          max_tries=240 # max_tries times every minute
+          echo "waiting for docker image '${REGISTRY}/${IMAGE_NAME}:${git_sha}' to be available"
+          for _ in $(seq 1 ${max_tries})
+          do
+            sleep 60
+            echo " 😴 "
+            docker pull ${REGISTRY}/${IMAGE_NAME}:${git_sha} &>/dev/null && break
+          done
+
+          echo " ✅ "
+
+          echo "tagging and pushing docker image"
+          (set -ex;
+            docker --platform=linux/amd64 tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/amd64 push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/arm64 tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+            docker --platform=linux/arm64 push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
+          )
+
+  publish_helm_chart:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs:
+      - retag_docker_image
+    if: github.ref_type == 'tag'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: '0'
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            /usr/local/bin
+          key: ${{ runner.os }}-helm-${HELM_VERSION}-binary
+
+      - name: Install helm
+        run: |
+          test -e /usr/local/bin/helm || wget -O- https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz | tar --directory /usr/local/bin --strip-components=1 -xz ${OS}-${ARCH}/helm
+
+      - name: Create helm packages & index
+        run: |
+          cd charts
+          for dir in *
+          do
+            helm package $dir
+          done
+          helm repo index .
+      - name: Publish chart
+        run: |
+          git config --global user.email "self-service-helm-creator@bornkessel.com"
+          git config --global user.name "Helm Packager"
+
+          git checkout gh-pages
+          mv charts/*.yaml charts/*.tgz .
+
+          git add .
+          git commit -m "Update chart to app version $(basename ${GITHUB_REF})" || true
+          git push
