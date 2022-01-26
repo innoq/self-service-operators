@@ -134,7 +134,7 @@ jobs:
   # Build an amd64 image first as this is much faster than a multi arch
   # image. Multi arch gets built later as well and will overwrite the
   # docker tags
-  publish_docker_image_amd64:
+  publish_docker_image_amd64_preview:
     name: Publish Docker Image (amd64)
     runs-on: ubuntu-latest
     env:
@@ -243,7 +243,7 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }}
           cache-to: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }},mode=max
 
-  publish_docker_image_multiarch:
+  publish_docker_image_multiarch_preview:
     name: Publish Docker Image (multi-arch)
     runs-on: ubuntu-latest
     env:
@@ -255,6 +255,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    if: github.ref_type != 'tag'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -307,19 +309,33 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }}
 
-  retag_docker_image:
-    name: Create version tag for existing docker image
+  publish_docker_image_multiarch_release:
+    name: Publish Docker Image (multi-arch)
     runs-on: ubuntu-latest
+    env:
+      arch: linux/amd64, linux/arm64
+      buildcache_name: buildcache-multiarch
+    needs:
+      - run_tests
+      - build_docker_image_multiarch
     permissions:
       contents: read
       packages: write
-    needs:
-      - publish_docker_image_multiarch
     if: github.ref_type == 'tag'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
+
+      - name: Set version output
+        id: version
+        run: echo "::set-output name=VERSION::$(cat VERSION)"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
 
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
@@ -329,34 +345,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create version tag for existing docker image
-        run: |
-          git_sha=sha-$(git rev-parse --short HEAD)
-          git_tag=$(basename ${GITHUB_REF})
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # generate Docker tags based on the following events/attributes
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}}.{{patch}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=${{ steps.version.outputs.VERSION }}
+          flavor: |
+            latest=auto
 
-          # wait for image to be available
-          max_tries=240 # max_tries times every minute
-          echo "waiting for docker image '${REGISTRY}/${IMAGE_NAME}:${git_sha}' to be available"
-          for _ in $(seq 1 ${max_tries})
-          do
-            sleep 60
-            echo " 😴 "
-            docker pull ${REGISTRY}/${IMAGE_NAME}:${git_sha} &>/dev/null && break
-          done
-
-          echo " ✅ "
-
-          echo "tagging and pushing docker image"
-          (set -ex;
-            docker tag  ${REGISTRY}/${IMAGE_NAME}:${git_sha} ${REGISTRY}/${IMAGE_NAME}:${git_tag}
-            docker push ${REGISTRY}/${IMAGE_NAME}:${git_tag}
-          )
+      # Build and push Docker image with Buildx (don't push on PR)
+      # https://github.com/docker/build-push-action
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v2
+        with:
+          platforms: ${{ env.arch }}
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/innoq/self-service-operators/${{ env.buildcache_name }}
 
   publish_helm_chart:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
     needs:
-      - retag_docker_image
+      - publish_docker_image_multiarch_release
     if: github.ref_type == 'tag'
 
     steps:
