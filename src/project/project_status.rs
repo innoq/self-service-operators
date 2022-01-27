@@ -51,14 +51,17 @@ impl ObjectStatus for ProjectStatus {
         let mut status = serde_json::Map::new();
 
         if let Some(phase) = self.phase.clone() {
+            debug!("phase: {:?}", phase);
             status.insert("phase".to_string(), serde_json::json!(phase));
         };
 
         if let Some(message) = self.message.clone() {
+            debug!("message: {}", message);
             status.insert("message".to_string(), serde_json::Value::String(message));
         };
 
         if let Some(summary) = self.summary.clone() {
+            debug!("summary: {}", summary);
             status.insert("summary".to_string(), serde_json::Value::String(summary));
         };
 
@@ -72,6 +75,8 @@ impl ObjectStatus for ProjectStatus {
                     .collect::<Vec<JsonValue>>(),
             ),
         );
+
+        debug!("status: {:?}", status.clone());
 
         debug!(
             "patch: {}",

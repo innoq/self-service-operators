@@ -141,7 +141,7 @@ docker build --progress=plain -t ghcr.io/innoq/self-service-operators:local-buil
 
 # if you use the kind cluster with the local-kind-cluster.sh-Script
 ./local-kind-cluster.sh load_image ghcr.io/innoq/self-service-operators:local-build
-helm upgrade --install --namespace ssp --create-namespace --set image.tag=local-build ssp ./charts/self-service-operators
+kubectl delete deploy ssp-self-service-operators && helm upgrade --install --namespace ssp --create-namespace --set logVerbosity=debug --set image.tag=local-build ssp --set image.pullPolicy=IfNotPresent ./charts/self-service-operators
 
 ```
 
