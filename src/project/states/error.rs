@@ -16,6 +16,7 @@
 
 use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::project::operator::ProjectOperatorState;
 use krator::{Manifest, State, Transition};
@@ -65,7 +66,10 @@ impl State<ProjectState> for Error {
                 ),
             },
             Err(e) => {
+                let timeout = Duration::from_secs(60);
                 state.error = e.to_string();
+                warn!("error watching stream for new events: {} ... waiting {} seconds in order to avoid log flooding", &state.error, &timeout.as_secs());
+                tokio::time::sleep(timeout).await;
                 return Transition::next(self, Error);
             }
             _ => {
