@@ -1,12 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: ssh-public-key-reader
+  name: selfservice-project-public-key-reader-{{ __PROJECT_NAME__ }}
   namespace: argocd
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: ssh-public-key-reader
+  name: selfservice-project-public-key-reader-{{ __PROJECT_NAME__ }}
 
 # basically allow anyone to read the public key ... because: well ... it's public
 subjects:

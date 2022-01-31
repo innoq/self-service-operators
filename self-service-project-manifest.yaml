@@ -5,12 +5,10 @@ kind: Project
 metadata:
   annotations:
     project.selfservice.innoq.io/create-ssh-keys: copy
-  name: sample-self-service-project
+    project.selfservice.innoq.io/argocd-app: copy
+  name: test
 spec:
   owners:
-    - superdev@example.com
-    - supradev@example.com
-  manifestValues: |
-    selfDestructAt: 27 11 12 1 *
+    - s5:daniel
 
 

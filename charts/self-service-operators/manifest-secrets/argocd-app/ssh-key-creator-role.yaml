@@ -23,15 +23,6 @@ rules:
   verbs:
   - patch
 - apiGroups:
-  - rbac.authorization.k8s.io
-  resourceNames:
-  - ssh-key-creator-{{ __PROJECT_NAME__ }}
-  resources:
-  - roles
-  - rolebindigs
-  verbs:
-  - patch
-- apiGroups:
   - ""
   resourceNames:
   - ssh-key-creator-{{ __PROJECT_NAME__ }}

@@ -1,13 +1,13 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: ssh-public-key-reader
+  name: selfservice-project-public-key-reader-{{ __PROJECT_NAME__ }}
   namespace: argocd
 rules:
 - apiGroups:
   - ""
   resourceNames:
-  - ssh-public-key
+  - selfservice-project-public-key-{{ __PROJECT_NAME__ }}
   resources:
   - configmaps
   verbs:

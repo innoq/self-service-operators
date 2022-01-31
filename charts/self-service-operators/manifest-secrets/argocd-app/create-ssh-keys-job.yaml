@@ -12,8 +12,8 @@ spec:
       containers:
       - image: alpine
         env:
-          - {name: KEY_PAIR_SECRET_NAME,   value: "selfservice-project-argocd-repo-{{ __PROJECT_NAME__ }}" }
-          - {name: PUBLIC_KEY_SECRET_NAME, value: "selfservice-project-argocd-repo-{{ __PROJECT_NAME__ }}-ssh-public-key" }
+          - {name: KEY_PAIR_SECRET_NAME,   value: "selfservice-project-repo-{{ __PROJECT_NAME__ }}" }
+          - {name: PUBLIC_KEY_SECRET_NAME, value: "selfservice-project-public-key-{{ __PROJECT_NAME__ }}" }
           - {name: MY_UID, valueFrom: { fieldRef: { fieldPath: metadata.uid } } }
           - {name: MY_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
           - {name: ARGOCD_NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
@@ -63,11 +63,7 @@ spec:
             }
             EOF
 
-            echo "public-key"
-            cat public-key.json
-
             kubecurl POST /api/v1/namespaces/${ARGOCD_NAMESPACE}/configmaps "$(cat public-key.json)"
-            
 
             {{~#each argoAppRepos }}
 
@@ -95,9 +91,6 @@ spec:
             }
             EOF
             
-            echo "private-public-key"
-            cat keypair.json
-
             kubecurl POST /api/v1/namespaces/${ARGOCD_NAMESPACE}/secrets    "$(cat keypair.json)"
             {{~/each}}
 
@@ -109,9 +102,7 @@ spec:
                             /api/v1/namespaces/${ARGOCD_NAMESPACE}/serviceaccounts
             do
               kubecurl PATCH ${resource}/ssh-key-creator-{{ __PROJECT_NAME__ }} '{"metadata":{"ownerReferences":null}}'
-              echo "PATCH 1"; sleep 1;
               kubecurl PATCH ${resource}/ssh-key-creator-{{ __PROJECT_NAME__ }} "${reference}"
-              echo "PATCH 2"; sleep 1;
             done
 
 

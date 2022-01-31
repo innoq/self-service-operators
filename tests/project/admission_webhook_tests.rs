@@ -185,6 +185,38 @@ async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore]
+async fn it_should_fail_if_iterable_template_vals_are_missing() -> anyhow::Result<()> {
+    let (client, operator) = project::before_each().await?;
+
+    project::apply_manifest_secret(
+        &client,
+        DEFAULT_MANIFESTS_SECRET,
+        vec![include_str!("../fixtures/templated-pod.yaml")],
+    )
+    .await?;
+
+    let name = project::random_name("missing-template-val");
+    let project = Project::new(&name, Default::default());
+
+    let result = operator.admission_hook(project).await;
+
+    match result {
+        AdmissionResult::Deny(status) => {
+            assert_eq!(status.code, Some(409));
+            assert_eq!(
+                status.message,
+                Some("Error rendering \"default-project-manifests/resource0\" line 5, col 9: Variable \"name\" not found in strict mode. (did you provide all necessary manifestValues in the project spec?)".to_string())
+            );
+            assert_eq!(status.status, Some("Failure".to_string()));
+        }
+        _ => panic!("admission hook did not fail even though a manifest value was missing"),
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
