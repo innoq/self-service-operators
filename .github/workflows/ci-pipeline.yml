@@ -178,6 +178,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
+          labels: |
+            org.opencontainers.image.description=This is the self-service-operators image of https://innoq.github.io/self-service-operators
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # generate Docker tags based on the following events/attributes
           tags: |
@@ -283,6 +285,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
+          labels: |
+            org.opencontainers.image.description=This is the self-service-operators image of https://innoq.github.io/self-service-operators
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # generate Docker tags based on the following events/attributes
           tags: |
@@ -349,8 +353,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
+          labels: |
+            org.opencontainers.image.description=This is the self-service-operators image of https://innoq.github.io/self-service-operators
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # generate Docker tags based on the following events/attributes
           tags: |
             type=ref,event=branch
             type=ref,event=pr
