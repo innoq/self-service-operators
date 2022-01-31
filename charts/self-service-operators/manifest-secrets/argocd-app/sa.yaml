@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ssh-key-creator-{{ __PROJECT_NAME__ }}
+  namespace: argocd
+  annotations:
+    project.selfservice.innoq.io/apply: once

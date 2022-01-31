@@ -19,7 +19,7 @@ spec:
         name: ssh-key-creator
         command:
           - sh
-          - -exc
+          - -ec
           - |
             apk add curl openssh-keygen jq
 
@@ -46,7 +46,7 @@ spec:
             # save public key in a config map that will be accessible by everyone
             echo '{"kind":"ConfigMap","apiVersion":"v1","metadata":{"name":"'${PUBLIC_KEY_SECRET_NAME}'"},"data":{"id_rsa.pub":"'$(cat id_rsa.pub)'"}}' | \
                jq -r > public-key.json
-
+            
             # save keypair in a secret ... putting public key here as well for convinience
             echo '{"kind":"Secret","apiVersion":"v1","metadata":{"name":"'${KEY_PAIR_SECRET_NAME}'"},"data":{"id_rsa":"'$(cat id_rsa|base64 -w0)'","id_rsa.pub":"'$(cat id_rsa.pub|base64 -w0)'"}}' | \
               jq -r > keypair.json

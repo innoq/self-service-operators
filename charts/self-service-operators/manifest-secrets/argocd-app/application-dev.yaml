@@ -1,0 +1,28 @@
+{{~#each argoAppRepos }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: selfservice-project-{{ ../__PROJECT_NAME__ }}-{{ @key }}-dev
+
+  # create this resource in the argocd namespace so users can't do any
+  # privilege escalation by getting access to other namespaces, etc.
+  namespace: argocd
+spec:
+  destination:
+    namespace: {{ ../__PROJECT_NAME__ }}
+    name: in-cluster
+  project: selfservice-project-{{ ../__PROJECT_NAME__ }}
+  source:
+    path: .
+    repoURL: '{{ this }}'
+    targetRevision: dev-environment
+    directory:
+      recurse: true
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+{{~/each}}
