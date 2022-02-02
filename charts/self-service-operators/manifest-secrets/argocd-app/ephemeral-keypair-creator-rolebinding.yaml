@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: ssh-key-creator-{{ __PROJECT_NAME__ }}
-  namespace: argocd
+  namespace: {{ argoNamespace }}
   annotations:
     project.selfservice.innoq.io/apply: once
 roleRef:
@@ -12,4 +12,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: ssh-key-creator-{{ __PROJECT_NAME__ }}
-  namespace: argocd
+  namespace: {{ argoNamespace }}

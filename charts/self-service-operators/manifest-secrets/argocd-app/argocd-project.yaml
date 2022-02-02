@@ -5,7 +5,7 @@ metadata:
   name: selfservice-project-{{ __PROJECT_NAME__ }}
   # create this resource in the argocd namespace so users can't do any
   # privilege escalation by getting access to other namespaces, etc.
-  namespace: argocd
+  namespace: {{ argoNamespace }}
 spec:
   destinations:
   - namespace: '{{ __PROJECT_NAME__ }}'

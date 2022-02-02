@@ -1,0 +1,187 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ssh-key-creator-{{ __PROJECT_NAME__ }}
+  namespace: {{ argoNamespace }}
+  annotations:
+    project.selfservice.innoq.io/apply: once
+spec:
+  template:
+    spec:
+      serviceAccountName: ssh-key-creator-{{ __PROJECT_NAME__ }}
+      containers:
+      - image: alpine
+        env:
+          - {name: KEY_PAIR_SECRET_NAME,   value: "selfservice-project-repo-{{ __PROJECT_NAME__ }}" }
+          - {name: PUBLIC_KEY_SECRET_NAME, value: "selfservice-project-public-key-{{ __PROJECT_NAME__ }}" }
+          - {name: MY_UID, valueFrom: { fieldRef: { fieldPath: metadata.uid } } }
+          - {name: MY_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+          - {name: ARGOCD_NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        name: ssh-key-creator-{{ __PROJECT_NAME__ }}
+        command:
+          - sh
+          - -ec
+          - |
+            (set -e
+
+            apk add curl openssh-keygen jq
+            token=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+            kubecurl() {
+              set -e
+              local method=$1
+              shift; local resource=$1
+              shift; local data=$*
+              echo "${data}" > /tmp/data
+
+              test "${method}" = "PATCH" \
+                && local content_type='Content-Type: application/merge-patch+json' \
+                || local content_type='Content-Type: application/json'
+
+              test "${method}" != "GET" && local query_params="?fieldManager=create-ssh-keys-job"
+
+              printf "curl -X %-6s ... https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}${resource}${query_params}\n" ${method} >&2
+
+              result=$(set -e; curl -fsk -X ${method} -H "Accept: application/json, */*" -H "${content_type}" \
+                -H"Authorization: Bearer ${token}" \
+                ${data:+-i -d@/tmp/data} \
+                "https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}${resource}${query_params}"
+                2> /tmp/stderr
+              )
+
+              test "$?" = "0" || { printf "error, result:\nHeaders:\n$(cat /tmp/stderr)\n\nbody:\n${result}\nbody was:\n${data}" >&2 ; exit 1; }
+
+              echo "${result}"
+            }
+
+            # get the owner reference of the service account as it references our project
+            reference_to_project=$(
+              kubecurl GET /api/v1/namespaces/${ARGOCD_NAMESPACE}/serviceaccounts/ssh-key-creator-{{ __PROJECT_NAME__ }}|\
+              jq -r ".metadata.ownerReferences" )
+
+            # create ssh key pair
+            (set -e; ssh-keygen -t rsa -b 4096 -C "ssh key generated for project {{ __PROJECT_NAME__ }} by projects.selfservice.innoq.io manifest" -f id_rsa -N "")
+
+            {{~#each argoAppRepos }}
+            # save keypair in a secret ... putting public key here as well for convinience
+            cat<<-EOF|jq -r > keypair.json
+            {
+              "kind": "Secret",
+              "apiVersion": "v1",
+              "metadata": {
+                "name": "${KEY_PAIR_SECRET_NAME}-{{ @key }}",
+                "ownerReferences": ${reference_to_project},
+                "annotations": {
+                    "managed-by": "argocd.argoproj.io"
+                },
+                "labels": {
+                    "argocd.argoproj.io/secret-type": "repository"
+                }
+              },
+              "data": {
+                "type": "$(printf "git"|base64 -w0)",
+                "url": "$(printf "{{ this }}"|base64 -w0)",
+                "sshPrivateKey": "$(cat id_rsa|base64 -w0)",
+                "sshPublicKey": "$(cat id_rsa.pub|base64 -w0)"
+              }
+            }
+            EOF
+
+            kubecurl POST /api/v1/namespaces/${ARGOCD_NAMESPACE}/secrets    "$(cat keypair.json)" > /tmp/log
+            {{~/each}}
+
+
+            # save public key in a config map that will be accessible by everyone
+            cat<<-EOF|jq -r > public-key.json
+            {
+              "kind": "ConfigMap",
+              "apiVersion": "v1",
+              "metadata": {
+                "name": "${PUBLIC_KEY_SECRET_NAME}",
+                "ownerReferences": ${reference_to_project}
+              },
+              "data": {
+                "id_rsa.pub": "$(cat id_rsa.pub)"
+              }
+            }
+            EOF
+
+            # we could run into a race condition here if the necessary clusterrole / clusterrolebinding does not
+            # exist yet
+            for _ in $(seq 1 10)
+            do
+              sleep 2
+              kubecurl PATCH /api/v1/namespaces/{{ __PROJECT_NAME__ }}/configmaps/selfservice-project-public-key-{{ __PROJECT_NAME__ }} \
+                "$(cat public-key.json)" > /tmp/log && break
+            done
+
+            # we got permission to write this last configmap by a clusterrole / clusterrolebinding which is not needed anymore
+            # so we will make the clusterrolebinding owned by the clusterrole and after that delete the clusterrole, so we
+            # don't litter our Kubernetes
+            cluster_role_uid=$(kubecurl GET /apis/rbac.authorization.k8s.io/v1/clusterroles/public-key-reader-creator-{{ __PROJECT_NAME__ }}|jq -r ".metadata.uid")
+            reference_to_clusterrole=$(cat<<-EOF
+            {
+              "metadata": {
+                "ownerReferences": [
+                   {
+                     "apiVersion": "rbac.authorization.k8s.io",
+                     "blockOwnerDeletion": true,
+                     "kind": "ClusterRole",
+                     "name": "public-key-reader-creator-{{ __PROJECT_NAME__ }}",
+                     "uid": "${cluster_role_uid}"
+                   }
+                ]
+              }
+            }
+            EOF
+            )
+
+            kubecurl PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/public-key-reader-creator-{{ __PROJECT_NAME__ }} \
+              '{"metadata":{"ownerReferences":null}}' > /tmp/log
+            kubecurl PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/public-key-reader-creator-{{ __PROJECT_NAME__ }} \
+              "${reference_to_clusterrole}" > /tmp/log
+
+            # delete clusterrole -- it'll be blocked until the clusterrolebinding will be removed due to the
+            # `blockOwnerDeletion` above
+            kubecurl DELETE /apis/rbac.authorization.k8s.io/v1/clusterroles/public-key-reader-creator-{{ __PROJECT_NAME__ }} \
+              '{"kind":"DeleteOptions","apiVersion":"v1","propagationPolicy":"Foreground"}' > /tmp/log
+
+            # delete clusterrolebinding -- I actually expected that this would happen automagically due to the ownership
+            # relation we set up there, but apparently it does not work. As we set `blockOwnerDeletion` in the clusterrole
+            # above we can still delete this clusterrolebinding and the clusterrole will automatically deleted afterwards
+            kubecurl DELETE /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/public-key-reader-creator-{{ __PROJECT_NAME__ }} \
+              > /tmp/log
+
+            # own all resources that should be deleted after this job gets deleted (which is the last command of this script)
+            # in order to not litter the argocd namespace
+            reference=$(cat<<-EOF
+            {
+              "metadata": {
+                "ownerReferences": [
+                  {
+                    "apiVersion": "v1",
+                    "kind": "Pod",
+                    "name": "${MY_NAME}",
+                    "uid": "${MY_UID}"
+                  }
+                ]
+              }
+            }
+            EOF
+            )
+
+            for resource in /apis/rbac.authorization.k8s.io/v1/namespaces/${ARGOCD_NAMESPACE}/roles \
+                            /apis/rbac.authorization.k8s.io/v1/namespaces/${ARGOCD_NAMESPACE}/rolebindings \
+                            /api/v1/namespaces/${ARGOCD_NAMESPACE}/serviceaccounts
+            do
+              set -e
+              kubecurl PATCH ${resource}/ssh-key-creator-{{ __PROJECT_NAME__ }} '{"metadata":{"ownerReferences":null}}' > /tmp/log
+              kubecurl PATCH ${resource}/ssh-key-creator-{{ __PROJECT_NAME__ }} "${reference}" > /tmp/log
+            done
+
+
+            kubecurl DELETE /apis/batch/v1/namespaces/${ARGOCD_NAMESPACE}/jobs/ssh-key-creator-{{ __PROJECT_NAME__ }} \
+              '{"propagationPolicy":"Foreground"}' > /tmp/log
+            ) || { echo "script failed!!!"; cat /tmp/log; exit 1; }
+
+      restartPolicy: OnFailure

@@ -1,0 +1,31 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: public-key-reader-creator-{{ __PROJECT_NAME__ }}
+rules:
+  - apiGroups:
+      - ""
+    resourceNames:
+      - selfservice-project-public-key-{{ __PROJECT_NAME__ }}
+    resources:
+      - configmaps
+    verbs:
+      - patch
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resourceNames:
+      - public-key-reader-creator-{{ __PROJECT_NAME__ }}
+    resources:
+      - clusterroles
+    verbs:
+      - delete
+      - get
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resourceNames:
+      - public-key-reader-creator-{{ __PROJECT_NAME__ }}
+    resources:
+      - clusterrolebindings
+    verbs:
+      - patch
+      - delete
