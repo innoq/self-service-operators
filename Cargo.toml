@@ -12,6 +12,12 @@ readme = "README.md"
 name = "self_service_operators"
 path = "src/lib.rs"
 
+[[bin]]
+name = "self-service-postgresdb-operator"
+
+[[bin]]
+name = "self-service-project-operator"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 http = "0.2.3"
@@ -35,6 +41,7 @@ serde_yaml = "0.8"
 tokio = { version="1.0", features=["macros", "rt-multi-thread", "time"] }
 rcgen = "0.8.9"
 handlebars = "3"
+tokio-postgres = "0.7.5"
 
 [build-dependencies]
 serde_yaml = "0.8"

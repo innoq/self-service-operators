@@ -14,28 +14,24 @@
  * limitations under the License.
  */
 
-
-
-
 use std::{convert::TryFrom, process::exit};
 
-use anyhow::{Context};
+use anyhow::{anyhow, Context};
 use clap::{crate_authors, crate_version, Clap};
 use env_logger::*;
 use k8s_openapi::api::core::v1::Secret;
 
 use log::{debug, info, LevelFilter};
 pub use schemars::JsonSchema;
-
-
+use tokio_postgres::{Client, NoTls};
 
 use self_service_operators::project::Project;
 use self_service_operators::project::Sample;
 
 #[derive(Clap)]
 #[clap(
-version = crate_version!(),
-author = crate_authors!()
+version = crate_version ! (),
+author = crate_authors ! ()
 )]
 struct Opts {
     /// Prints the postgresdb crd to stdout
@@ -50,18 +46,16 @@ struct Opts {
     #[clap(short = 'm', long)]
     print_sample_postgresdb_manifest: bool,
 
-    /// Test manifest template:outputs the result of a given manifest template / project combination: expects <PROJECT.YAML>,<MANIFEST.YAML> (files separated by comma)
-    #[clap(short = 't', long)]
-    test_manifest_template: Option<String>,
-
     /// verbose level
     #[clap(short = 'd', long, default_value = "db-connection")]
     db_connection_secret: String,
 
     /// verbose level
-    #[clap(short, long, default_value = "info", possible_values = &["debug", "info", "warn", "error"]) ]
+    #[clap(short, long, default_value = "info", possible_values = &["debug", "info", "warn", "error"])]
     verbosity_level: String,
 }
+
+const CONNECTION_STRING_VARIABLE: &str = "connection_string";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -117,7 +111,41 @@ async fn main() -> anyhow::Result<()> {
             .and(Ok(()));
     }
 
-    let _api: kube::Api<Secret> = kube::Api::namespaced(client, &kubeconfig.default_ns);
+    let api: kube::Api<Secret> = kube::Api::namespaced(client, &kubeconfig.default_ns);
+    let secret = api
+        .get(&opts.db_connection_secret)
+        .await
+        .context(format!("Secret {} not found.", &opts.db_connection_secret))?;
+
+    let connection_string = String::from_utf8(
+        secret
+            .data
+            .ok_or_else(|| anyhow!("Secret {} is empty", &opts.db_connection_secret))?
+            .get(CONNECTION_STRING_VARIABLE)
+            .context(format!(
+                "Secret {} doesn't have a key with name {}",
+                &opts.db_connection_secret, CONNECTION_STRING_VARIABLE
+            ))?
+            .to_owned()
+            .0,
+    )?;
+
+    // CREATE ROLE $DBNAME NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOLOGIN;
+    // CREATE ROLE $DBMAINUSER NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT LOGIN ENCRYPTED PASSWORD 'foopass';
+    // GRANT $DBNAME TO $DBMAINUSER;
+    // grant $DBMAINUSER to postgres;
+    // CREATE DATABASE $DBNAME WITH OWNER=$DBMAINUSER;
+    // REVOKE ALL ON DATABASE $DBNAME FROM public;
+
+    // TODO tls
+    debug!("Trying to connect to database");
+    let client = tokio_postgres::connect(&connection_string, NoTls)
+        .await
+        .context(format!(
+            "Couldn't connect to database using connection string found in secret {}/{}",
+            &opts.db_connection_secret, CONNECTION_STRING_VARIABLE
+        ))?;
+    debug!("Database connection successful!");
 
     // let tracker = operator::PostgresDbOperator::new(client, &kubeconfig.default_ns).await?;
 
