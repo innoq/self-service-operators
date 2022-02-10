@@ -14,9 +14,9 @@ spec:
     name: in-cluster
   project: selfservice-project-{{ ../__PROJECT_NAME__ }}
   source:
-    path: .
+    path: dev
     repoURL: '{{ this }}'
-    targetRevision: dev-environment
+    targetRevision: kubernetes-manifests
     directory:
       recurse: true
   syncPolicy:

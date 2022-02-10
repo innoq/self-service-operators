@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
         "starting Self Service Project operator version {}",
         crate_version!()
     );
-    debug!("logging level set to 'debug' -- don't use this in production as it can pontentially leak sensitive information");
+    debug!("logging level set to 'debug' -- don't use this in production as it can potentially leak sensitive information");
 
     if opts.print_crd {
         println!(

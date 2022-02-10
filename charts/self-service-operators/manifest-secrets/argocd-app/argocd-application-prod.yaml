@@ -14,9 +14,9 @@ spec:
     name: in-cluster
   project: selfservice-project-{{ ../__PROJECT_NAME__ }}
   source:
-    path: .
+    path: prod
     repoURL: '{{ this }}'
-    targetRevision: prod-environment
+    targetRevision: kubernetes-manifests
     directory:
       recurse: true
   syncPolicy:
@@ -24,5 +24,5 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=false
+      - CreateNamespace=true
   {{~/each}}
