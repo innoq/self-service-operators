@@ -20,6 +20,7 @@ extern crate log;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::api;
 
+pub mod postgres;
 pub mod project;
 
 pub async fn install_crd(

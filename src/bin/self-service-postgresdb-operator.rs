@@ -20,10 +20,12 @@ use anyhow::{anyhow, Context};
 use clap::{crate_authors, crate_version, Clap};
 use env_logger::*;
 use k8s_openapi::api::core::v1::Secret;
+use krator::OperatorRuntime;
 
 use log::{debug, info, LevelFilter};
 pub use schemars::JsonSchema;
-use tokio_postgres::{Client, NoTls};
+use self_service_operators::postgres;
+use tokio_postgres::NoTls;
 
 use self_service_operators::project::Project;
 use self_service_operators::project::Sample;
@@ -101,17 +103,17 @@ async fn main() -> anyhow::Result<()> {
     debug!("infering kubernetes config");
     let kubeconfig = kube::config::Config::infer().await?;
 
-    let client = kube::Client::try_from(kubeconfig.clone())
+    let kube_client = kube::Client::try_from(kubeconfig.clone())
         .context("error creating kubernetes client from the current environment")?;
 
     if opts.install_crd {
         info!("installing crd");
-        return self_service_operators::install_crd(&client, &Project::crd())
+        return self_service_operators::install_crd(&kube_client, &Project::crd())
             .await
             .and(Ok(()));
     }
 
-    let api: kube::Api<Secret> = kube::Api::namespaced(client, &kubeconfig.default_ns);
+    let api: kube::Api<Secret> = kube::Api::namespaced(kube_client.clone(), &kubeconfig.default_ns);
     let secret = api
         .get(&opts.db_connection_secret)
         .await
@@ -130,22 +132,28 @@ async fn main() -> anyhow::Result<()> {
             .0,
     )?;
 
+    // TODO tls
+    debug!("Trying to connect to database");
+    let (postgres_client, _) = tokio_postgres::connect(&connection_string, NoTls)
+        .await
+        .context(format!(
+            "Couldn't connect to database using connection string found in secret {}/{}",
+            &opts.db_connection_secret, CONNECTION_STRING_VARIABLE
+        ))?;
+    info!("Database connection successful!");
+    info!("starting operator");
+
+    let operator = postgres::operator::PostgresOperator::new(kube_client, postgres_client).await?;
+    // let params = ListParams::default().labels("nps.gov/park=glacier");
+    let mut runtime = OperatorRuntime::new(&kubeconfig, operator, None);
+    runtime.start().await;
+
     // CREATE ROLE $DBNAME NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOLOGIN;
     // CREATE ROLE $DBMAINUSER NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT LOGIN ENCRYPTED PASSWORD 'foopass';
     // GRANT $DBNAME TO $DBMAINUSER;
     // grant $DBMAINUSER to postgres;
     // CREATE DATABASE $DBNAME WITH OWNER=$DBMAINUSER;
     // REVOKE ALL ON DATABASE $DBNAME FROM public;
-
-    // TODO tls
-    debug!("Trying to connect to database");
-    let client = tokio_postgres::connect(&connection_string, NoTls)
-        .await
-        .context(format!(
-            "Couldn't connect to database using connection string found in secret {}/{}",
-            &opts.db_connection_secret, CONNECTION_STRING_VARIABLE
-        ))?;
-    debug!("Database connection successful!");
 
     // let tracker = operator::PostgresDbOperator::new(client, &kubeconfig.default_ns).await?;
 
