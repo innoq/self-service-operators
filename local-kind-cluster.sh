@@ -52,12 +52,17 @@ _install_kind() {
   chmod +x ./kind
 }
 
+launch_local_setup() {           # launch full local setup required for testing
+  launch_kind_cluster
+  install_postgres
+}
+
 #####################
 launch_kind_cluster() {          # launch kind cluster for experimentation
   set -e
   _install_kind
   KUBECONFIG=${KINDCONFIG} kubectl cluster-info &>/dev/null && return
-  cat<<-EOF>kind.conf
+  cat<<-EOF >kind.conf
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -89,7 +94,47 @@ nodes:
     kubectl cluster-info && break
   done
   )
- KUBECONFIG=${KINDCONFIG}
+  KUBECONFIG=${KINDCONFIG}
+}
+
+install_postgres() {             # install postgres into cluster
+  echo "deploying database"
+  cat<<EOF | kubectl apply -f -
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  terminationGracePeriodSeconds: 5
+  containers:
+  - name: postgres
+    image: postgres:alpine3.15
+    env:
+     - name: POSTGRES_PASSWORD
+       value: geheim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: postgres
+  name: postgres
+spec:
+  ports:
+  - name: 5432-5432
+    port: 5432
+    protocol: TCP
+    targetPort: 5432
+  selector:
+    app: postgres
+  type: ClusterIP
+status:
+  loadBalancer: {}
+EOF
 }
 
 
