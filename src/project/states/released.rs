@@ -51,8 +51,7 @@ impl State<ProjectState> for Released {
             summary: Some(format!("Bye, {}!", state.name)),
             applied_one_shot_resources: project
                 .status
-                .clone()
-                .unwrap_or_else(ProjectStatus::default)
+                .clone().unwrap_or_default()
                 .applied_one_shot_resources,
         })
     }

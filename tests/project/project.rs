@@ -31,7 +31,7 @@ use self_service_operators::project::states::ProjectPhase;
 async fn it_is_possible_to_update_project() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("update-project");
+    let name = crate::random_name("update-project");
     let _ = project::install_project(&client, &name).await?;
 
     let api: kube::Api<Project> = kube::Api::all(client.clone());

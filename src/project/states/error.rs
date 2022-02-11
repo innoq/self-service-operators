@@ -93,8 +93,7 @@ impl State<ProjectState> for Error {
             message: Some(message),
             applied_one_shot_resources: project
                 .status
-                .clone()
-                .unwrap_or_else(ProjectStatus::default)
+                .clone().unwrap_or_default()
                 .applied_one_shot_resources,
         })
     }

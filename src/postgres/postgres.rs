@@ -46,6 +46,7 @@ pub trait Sample {
     group = "selfservice.innoq.io",
     version = "v1",
     kind = "Postgres",
+    plural = "postgres",
     status = "PostgresStatus",
     shortname = "sspsql",
     printcolumn = r#"
@@ -90,8 +91,8 @@ impl Default for Postgres {
 
 impl Sample for Postgres {
     fn sample() -> Self {
-        let postgres = Postgres::new("sample-self-service-postgres", PostgresSpec::sample());
-        postgres
+        
+        Postgres::new("sample-self-service-postgres", PostgresSpec::sample())
     }
 }
 

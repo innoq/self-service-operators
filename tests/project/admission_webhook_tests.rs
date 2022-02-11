@@ -36,7 +36,7 @@ use crate::project;
 async fn it_should_be_possible_to_update_projects() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
-    let name = project::random_name("update-project-test");
+    let name = crate::random_name("update-project-test");
     let _ = project::install_project(&client, &name).await?;
 
     let project = Project::new(&name, Default::default());
@@ -85,7 +85,7 @@ async fn it_should_fail_if_namespace_already_exists_but_was_not_created_by_this_
 async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> anyhow::Result<()> {
     let (_, operator) = project::before_each().await?;
 
-    let name = project::random_name("missing-secret");
+    let name = crate::random_name("missing-secret");
     let mut project = Project::new(&name, Default::default());
 
     let mut meta_data = project.meta_mut();
@@ -121,7 +121,7 @@ async fn it_should_fail_if_secret_with_resource_manifests_is_not_available() -> 
 async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyhow::Result<()> {
     let (_, operator) = project::before_each().await?;
 
-    let name = project::random_name("missing-secret-item");
+    let name = crate::random_name("missing-secret-item");
     let mut project = Project::new(&name, Default::default());
 
     let mut meta_data = project.meta_mut();
@@ -157,14 +157,14 @@ async fn it_should_fail_if_secret_does_not_contain_addressed_data_item() -> anyh
 async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
         vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("missing-template-val");
+    let name = crate::random_name("missing-template-val");
     let project = Project::new(&name, Default::default());
 
     let result = operator.admission_hook(project).await;
@@ -189,14 +189,14 @@ async fn it_should_fail_if_template_vals_are_missing() -> anyhow::Result<()> {
 async fn it_should_fail_if_iterable_template_vals_are_missing() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
         vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("missing-template-val");
+    let name = crate::random_name("missing-template-val");
     let project = Project::new(&name, Default::default());
 
     let result = operator.admission_hook(project).await;
@@ -220,14 +220,14 @@ async fn it_should_fail_if_iterable_template_vals_are_missing() -> anyhow::Resul
 async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
         vec![include_str!("../fixtures/pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("missing-template-val");
+    let name = crate::random_name("missing-template-val");
     let mut project = Project::new(&name, Default::default());
     project.spec.manifest_values = Some("foo: -".into());
 
@@ -249,14 +249,14 @@ async fn it_should_fail_if_manifest_values_is_not_a_yaml_string() -> anyhow::Res
 async fn it_should_fail_if_manifest_values_is_just_a_simple_string() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
         vec![include_str!("../fixtures/pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("missing-template-val");
+    let name = crate::random_name("missing-template-val");
     let mut project = Project::new(&name, Default::default());
     project.spec.manifest_values = Some("baaam".into());
 
@@ -278,14 +278,14 @@ async fn it_should_fail_if_manifest_values_is_just_a_simple_string() -> anyhow::
 async fn it_should_fail_if_manifest_values_is_an_array() -> anyhow::Result<()> {
     let (client, operator) = project::before_each().await?;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
         vec![include_str!("../fixtures/pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("missing-template-val");
+    let name = crate::random_name("missing-template-val");
     let mut project = Project::new(&name, Default::default());
     project.spec.manifest_values = Some("[1,2]".into());
 

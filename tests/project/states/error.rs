@@ -31,9 +31,9 @@ use crate::project;
 async fn it_fails_with_correct_error_state_when_invalid_manifests_are_used() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("fail-with-invalid-manifests");
+    let name = crate::random_name("fail-with-invalid-manifests");
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![include_str!("../../fixtures/invalid.yaml")],

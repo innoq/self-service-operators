@@ -22,6 +22,7 @@ use env_logger::*;
 use k8s_openapi::api::core::v1::Secret;
 use krator::OperatorRuntime;
 
+use crate::postgres::Postgres;
 use log::{debug, info, LevelFilter};
 pub use schemars::JsonSchema;
 use self_service_operators::postgres;
@@ -47,6 +48,10 @@ struct Opts {
     /// Prints an postgresdb project sample manifest
     #[clap(short = 'm', long)]
     print_sample_postgresdb_manifest: bool,
+
+    /// Skip installation of webhook resources
+    #[clap(short = 'A', long)]
+    skip_install_admission_controller_manifests: bool,
 
     /// verbose level
     #[clap(short = 'd', long, default_value = "db-connection")]
@@ -113,7 +118,17 @@ async fn main() -> anyhow::Result<()> {
             .and(Ok(()));
     }
 
-    let api: kube::Api<Secret> = kube::Api::namespaced(kube_client.clone(), &kubeconfig.default_ns);
+    let namespace = kubeconfig.default_ns.as_str();
+    if !opts.skip_install_admission_controller_manifests {
+        info!("installing admission controller resources");
+        let resources = krator::admission::WebhookResources::from(
+            Postgres::admission_webhook_resources(namespace),
+        );
+
+        resources.apply(&kube_client).await?;
+    }
+
+    let api: kube::Api<Secret> = kube::Api::namespaced(kube_client.clone(), namespace);
     let secret = api
         .get(&opts.db_connection_secret)
         .await
@@ -143,7 +158,12 @@ async fn main() -> anyhow::Result<()> {
     info!("Database connection successful!");
     info!("starting operator");
 
-    let operator = postgres::operator::PostgresOperator::new(kube_client, postgres_client).await?;
+    let operator = postgres::operator::PostgresOperator::new(
+        kube_client,
+        postgres_client,
+        &kubeconfig.default_ns,
+    )
+    .await?;
     // let params = ListParams::default().labels("nps.gov/park=glacier");
     let mut runtime = OperatorRuntime::new(&kubeconfig, operator, None);
     runtime.start().await;

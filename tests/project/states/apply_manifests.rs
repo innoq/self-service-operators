@@ -30,8 +30,7 @@ use tokio::time;
 use self_service_operators::project::Sample;
 use self_service_operators::project::{Project, ProjectSpec};
 
-use crate::project;
-use crate::project::{wait_for_state, WaitForState};
+use crate::{project, wait_for_state, WaitForState};
 use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
@@ -39,10 +38,10 @@ use self_service_operators::project::states::ProjectPhase;
 async fn it_should_eventually_install_correctly_rendered_manifests() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("install-manifests");
+    let name = crate::random_name("install-manifests");
     let timeout_secs = 20;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![
@@ -86,7 +85,7 @@ array:
     let api: kube::Api<Project> = kube::Api::all(client.clone());
     let _ = api.create(&PostParams::default(), &project).await;
 
-    let wait_for_pod_created_handle = project::wait_for_state(
+    let wait_for_pod_created_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"pod-sa".to_string(),
         WaitForState::Created,
@@ -154,10 +153,10 @@ array:
 async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("apply-once-resources");
+    let name = crate::random_name("apply-once-resources");
     let timeout_secs = 20;
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![include_str!("../../fixtures/apply-once-resource.yaml")],
@@ -182,7 +181,7 @@ async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
     let api: kube::Api<Project> = kube::Api::all(client.clone());
     let _ = api.create(&PostParams::default(), &project).await;
 
-    let wait_for_pod_created_handle = project::wait_for_state(
+    let wait_for_pod_created_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"once".to_string(),
         WaitForState::Created,
@@ -198,7 +197,7 @@ async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
         timeout_secs
     );
 
-    let wait_for_pod_deleted_handle = project::wait_for_state(
+    let wait_for_pod_deleted_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"once".to_string(),
         WaitForState::Deleted,
@@ -218,7 +217,7 @@ async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
         timeout_secs
     );
 
-    let wait_for_pod_created_handle = project::wait_for_state(
+    let wait_for_pod_created_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"once".to_string(),
         WaitForState::Created,
@@ -240,9 +239,9 @@ async fn it_should_not_recreate_apply_once_resources() -> anyhow::Result<()> {
 async fn it_should_error_with_invalid_manifests() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("error-on-failing-manifests");
+    let name = crate::random_name("error-on-failing-manifests");
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![include_str!("../../fixtures/failing-manifest.yaml")],
@@ -290,9 +289,9 @@ name: name_with_forbidden_underscores
 async fn it_should_recover_after_project_was_fixed() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("recover-projects");
+    let name = crate::random_name("recover-projects");
 
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![include_str!("../../fixtures/failing-manifest.yaml")],
@@ -365,7 +364,7 @@ name: foooooo
 async fn it_should_recreate_deleted_resources() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("recreate-deleted-resources");
+    let name = crate::random_name("recreate-deleted-resources");
     let _ = project::install_project(&client, &name).await?;
 
     let api: kube::Api<Project> = kube::Api::all(client.clone());

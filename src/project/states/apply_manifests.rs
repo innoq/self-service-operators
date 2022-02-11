@@ -76,13 +76,13 @@ impl State<ProjectState> for ApplyManifests {
                 let max_retries = 5;
                 while let Some((i, manifest)) = manifests.pop() {
                     if let Err(e) =
-                        apply_yaml_manifest(&shared.client, &manifest, &project, state).await
+                        apply_yaml_manifest(&shared.client, manifest, &project, state).await
                     {
                         if i >= max_retries {
                             state.error = format!(
                                 "error installing manifest: giving up after {} retries: {}\nmanifest was:\n{}",
                                 i,
-                                e.to_string(),
+                                e,
                                 &manifest
                             );
                             return Transition::next(self, Error);
@@ -95,7 +95,7 @@ impl State<ProjectState> for ApplyManifests {
                             iteration_counter = i;
                             tokio::time::sleep(delay.mul(i.into())).await;
                         }
-                        manifests.insert(0, (i + 1, &manifest));
+                        manifests.insert(0, (i + 1, manifest));
                     }
                 }
             }
@@ -111,8 +111,7 @@ impl State<ProjectState> for ApplyManifests {
     ) -> anyhow::Result<ProjectStatus> {
         debug!("status() in ApplyManifests");
 
-        let applied_one_shot_resources = (project.status.clone() as Option<ProjectStatus>)
-            .unwrap_or_else(ProjectStatus::default)
+        let applied_one_shot_resources = (project.status.clone() as Option<ProjectStatus>).unwrap_or_default()
             .applied_one_shot_resources
             .into_iter()
             .collect();
@@ -137,12 +136,11 @@ pub async fn apply_yaml_manifest(
     project: &Project,
     state: &mut ProjectState,
 ) -> anyhow::Result<()> {
-    let path = resource_path(&client, yaml_manifest).await?;
+    let path = resource_path(client, yaml_manifest).await?;
 
     let is_one_shot_resource = is_one_shot_resource(yaml_manifest)?;
 
-    let applied_one_shot_resources = (project.status.clone() as Option<ProjectStatus>)
-        .unwrap_or_else(ProjectStatus::default)
+    let applied_one_shot_resources = (project.status.clone() as Option<ProjectStatus>).unwrap_or_default()
         .applied_one_shot_resources;
 
     if is_one_shot_resource && applied_one_shot_resources.contains(&path) {
@@ -150,7 +148,7 @@ pub async fn apply_yaml_manifest(
         return Ok(());
     }
 
-    let manifest = add_owner_to_yaml_manifest(yaml_manifest, &project)?;
+    let manifest = add_owner_to_yaml_manifest(yaml_manifest, project)?;
 
     let get_request = Request::builder()
         .uri(&path)

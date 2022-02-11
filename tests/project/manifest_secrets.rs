@@ -31,7 +31,7 @@ use self_service_operators::project::{operator, Sample};
 use self_service_operators::project::{Project, ProjectSpec};
 
 use crate::project;
-use crate::project::WaitForState;
+use crate::WaitForState;
 use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
@@ -39,7 +39,7 @@ use self_service_operators::project::states::ProjectPhase;
 async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("secret-annotations");
+    let name = crate::random_name("secret-annotations");
     let _ = project::install_project(&client, &name).await?;
 
     let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
@@ -111,10 +111,10 @@ async fn it_should_only_copy_from_annotated_secrets() -> anyhow::Result<()> {
 async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("copy-default-secrets-manifests");
+    let name = crate::random_name("copy-default-secrets-manifests");
     let timeout_secs = 20;
 
-    let wait_for_pod_created_handle = project::wait_for_state(
+    let wait_for_pod_created_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"foo".to_string(),
         WaitForState::Created,
@@ -145,17 +145,17 @@ async fn it_should_correctly_copy_default_manifests() -> anyhow::Result<()> {
 #[serial]
 async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Result<()> {
     let (client, _operator) = project::before_each().await?;
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         DEFAULT_MANIFESTS_SECRET,
         vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("copy-and-template-default-secrets-manifests");
+    let name = crate::random_name("copy-and-template-default-secrets-manifests");
     let timeout_secs = 20;
 
-    let wait_for_pod_created_handle = project::wait_for_state(
+    let wait_for_pod_created_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"templated-name".to_string(),
         WaitForState::Created,
@@ -186,14 +186,14 @@ async fn it_should_correctly_copy_and_template_default_manifests() -> anyhow::Re
 #[serial]
 async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
     let (client, _operator) = project::before_each().await?;
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("copy-annotated-manifest");
+    let name = crate::random_name("copy-annotated-manifest");
     let timeout_secs = 20;
 
     let manifest_values = "name: extra-pod";
@@ -220,14 +220,14 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
         .create(&PostParams::default(), &project)
         .await?;
 
-    project::wait_for_state(
+    crate::wait_for_state(
         &kube::Api::<Namespace>::all(client.clone()),
         &name,
         WaitForState::Created,
     )
     .await?;
 
-    let wait_for_pod_created_handle = project::wait_for_state(
+    let wait_for_pod_created_handle = crate::wait_for_state(
         &kube::Api::<Pod>::namespaced(client.clone(), &name),
         &"extra-pod".to_string(),
         WaitForState::Created,
@@ -257,14 +257,14 @@ async fn it_should_correctly_copy_annotated_manifests() -> anyhow::Result<()> {
 #[serial]
 async fn it_should_skip_annotated_manifests() -> anyhow::Result<()> {
     let (client, _operator) = project::before_each().await?;
-    project::apply_manifest_secret(
+    crate::apply_manifest_secret(
         &client,
         "extra-manifests",
         vec![include_str!("../fixtures/templated-pod.yaml")],
     )
     .await?;
 
-    let name = project::random_name("skip-annotated-manifest");
+    let name = crate::random_name("skip-annotated-manifest");
 
     let manifest_values = "- name: extra-pod";
 

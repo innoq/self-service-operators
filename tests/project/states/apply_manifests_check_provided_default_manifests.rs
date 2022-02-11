@@ -28,7 +28,7 @@ use tokio::time;
 use self_service_operators::project::Project;
 
 use crate::project;
-use crate::project::WaitForState;
+use crate::WaitForState;
 use self_service_operators::project::states::ProjectPhase;
 
 #[tokio::test]
@@ -37,7 +37,7 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 ) -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
     let timeout_secs = 60;
-    let name = project::random_name("owner-cluster-role-test");
+    let name = crate::random_name("owner-cluster-role-test");
 
     let project = project::install_project(&client, &name).await?;
 
@@ -47,10 +47,10 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
     let resource_name = format!("selfservice:project:owner:{}", name);
 
     let wait_for_clusterrole_created_handle =
-        project::wait_for_state(&cr_api, &resource_name, WaitForState::Created);
+        crate::wait_for_state(&cr_api, &resource_name, WaitForState::Created);
 
     let wait_for_clusterrolebinding_created_handle =
-        project::wait_for_state(&crb_api, &resource_name, WaitForState::Created);
+        crate::wait_for_state(&crb_api, &resource_name, WaitForState::Created);
 
     assert!(
         select! {
@@ -155,14 +155,14 @@ async fn it_should_create_clusterrole_and_clusterrolebinding_for_handling_this_p
 async fn it_creates_rolebinding() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
     let timeout_secs = 10;
-    let name = project::random_name("rolebinding-test");
+    let name = crate::random_name("rolebinding-test");
 
     let project = project::install_project(&client, &name).await?;
     let resource_name = "selfservice:project:owner";
 
     let api = kube::Api::<RoleBinding>::namespaced(client.clone(), name.as_str());
     let wait_for_rolebinding_created_handle =
-        project::wait_for_state(&api, &resource_name.to_string(), WaitForState::Created);
+        crate::wait_for_state(&api, &resource_name.to_string(), WaitForState::Created);
 
     assert!(
         select! {

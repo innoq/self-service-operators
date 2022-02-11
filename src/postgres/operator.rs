@@ -14,10 +14,13 @@
  * limitations under the License.
  */
 
+use anyhow::anyhow;
+use k8s_openapi::api::core::v1::Secret;
 use std::sync::Arc;
 
 use krator::admission::{AdmissionResult, AdmissionTls};
 use krator::{Manifest, Operator};
+use kube::Api;
 use tokio::sync::RwLock;
 
 use crate::postgres::postgres_status::PostgresStatus;
@@ -33,10 +36,12 @@ impl PostgresOperator {
     pub async fn new(
         kube_client: kube::Client,
         postgres_client: tokio_postgres::Client,
+        namespace: &str,
     ) -> anyhow::Result<Self> {
         let shared = Arc::new(RwLock::new(PostgresOperatorState {
-            _kube_client: kube_client.clone(),
+            kube_client,
             _postgres_client: postgres_client,
+            namespace: namespace.to_string(),
         }));
 
         Ok(PostgresOperator { shared })
@@ -77,14 +82,14 @@ impl Operator for PostgresOperator {
     }
 
     async fn admission_hook(&self, _postgres: Self::Manifest) -> AdmissionResult<Self::Manifest> {
-        unimplemented!("TODO");
+        unimplemented!();
         // let shared = self.shared.read().await;
         // let client = shared.client.clone();
         // let default_namespace = shared.default_ns.clone();
         // let postgres_name = postgres.metadata.name.as_ref().expect("");
-        //
+
         // debug!("admission hook: {:?}", postgres);
-        //
+
         // let deny = |msg: String| {
         //     AdmissionResult::Deny(Status {
         //         code: Some(409),
@@ -134,29 +139,28 @@ impl Operator for PostgresOperator {
         // {
         //     return deny(e.to_string());
         // }
-        //
+
         // AdmissionResult::Allow(postgres)
     }
 
     async fn admission_hook_tls(&self) -> anyhow::Result<AdmissionTls> {
-        unimplemented!();
-        // let client = self.shared.read().await.kube_client.clone();
-        // let namespace = &self.shared.read().await.default_ns;
-        //
-        // let name = Postgres::admission_webhook_secret_name();
-        //
-        // debug!(
-        //     "reading admission webhook certificates from secret {}/{}",
-        //     &namespace, &name
-        // );
-        //
-        // match Api::<Secret>::namespaced(client, namespace)
-        //     .get(&name)
-        //     .await
-        // {
-        //     Ok(secret) => Ok(AdmissionTls::from(&secret).unwrap()),
-        //     Err(e) => Err(anyhow!(e)),
-        // }
+        let client = self.shared.read().await.kube_client.clone();
+        let namespace = &self.shared.read().await.namespace;
+
+        let name = Postgres::admission_webhook_secret_name();
+
+        debug!(
+            "reading admission webhook certificates from secret {}/{}",
+            &namespace, &name
+        );
+
+        match Api::<Secret>::namespaced(client, namespace)
+            .get(&name)
+            .await
+        {
+            Ok(secret) => Ok(AdmissionTls::from(&secret).unwrap()),
+            Err(e) => Err(anyhow!(e)),
+        }
     }
 
     async fn deregistration_hook(
@@ -168,6 +172,7 @@ impl Operator for PostgresOperator {
 }
 
 pub struct PostgresOperatorState {
-    pub(crate) _kube_client: kube::Client,
+    pub(crate) kube_client: kube::Client,
     pub(crate) _postgres_client: tokio_postgres::Client,
+    pub(crate) namespace: String,
 }

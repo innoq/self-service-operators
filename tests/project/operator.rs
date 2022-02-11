@@ -20,12 +20,12 @@ use serial_test::serial;
 
 use self_service_operators::project::operator;
 
-use crate::project;
+
 
 #[tokio::test]
 #[serial]
 async fn it_fails_with_non_existant_default_manifests_secret() -> anyhow::Result<()> {
-    let (_, client) = project::get_client().await?;
+    let (_, client) = crate::get_client().await?;
 
     match operator::ProjectOperator::new(
 		client.clone(),

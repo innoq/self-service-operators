@@ -26,7 +26,7 @@ use tokio::time;
 use self_service_operators::project::Project;
 
 use crate::project;
-use crate::project::WaitForState;
+use crate::WaitForState;
 
 #[tokio::test]
 #[serial]
@@ -34,7 +34,7 @@ async fn it_creates_and_deletes_namespace() -> anyhow::Result<()> {
     let timeout_secs = 60;
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("namespace-test");
+    let name = crate::random_name("namespace-test");
     let project = project::install_project(&client, &name).await?;
 
     let ns_api: kube::Api<Namespace> = kube::Api::all(client.clone());
@@ -45,14 +45,14 @@ async fn it_creates_and_deletes_namespace() -> anyhow::Result<()> {
         "namespace should be owned by project"
     );
 
-    let wait_for_project_deleted_handle = project::wait_for_state(
+    let wait_for_project_deleted_handle = crate::wait_for_state(
         &kube::Api::<Project>::all(client.clone()),
         &name,
         WaitForState::Deleted,
     );
 
     let wait_for_namespace_deleted_handle =
-        project::wait_for_state(&ns_api, &name, WaitForState::Deleted);
+        crate::wait_for_state(&ns_api, &name, WaitForState::Deleted);
 
     assert!(
         kube::Api::<Project>::all(client.clone())

@@ -30,7 +30,7 @@ pub async fn install_crd(
     let crds: kube::Api<CustomResourceDefinition> = kube::Api::all(client.clone());
     let pp = api::PostParams::default();
 
-    match crds.create(&pp, &crd).await {
+    match crds.create(&pp, crd).await {
         Ok(crd) => {
             info!(
                 "Created {} ({:?})",

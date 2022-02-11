@@ -68,7 +68,7 @@ impl State<ProjectState> for CreateNamespace {
         };
 
         if let Err(e) = api.create(&PostParams::default(), &namespace).await {
-            state.error = format!("error creating namespace {}: {}", state.name, e.to_string());
+            state.error = format!("error creating namespace {}: {}", state.name, e);
             Transition::next(self, Error)
         } else {
             Transition::next(self, ApplyManifests)
@@ -87,8 +87,7 @@ impl State<ProjectState> for CreateNamespace {
             summary: Some(format!("creating namespace {}", state.name)),
             applied_one_shot_resources: project
                 .status
-                .clone()
-                .unwrap_or_else(ProjectStatus::default)
+                .clone().unwrap_or_default()
                 .applied_one_shot_resources,
         })
     }

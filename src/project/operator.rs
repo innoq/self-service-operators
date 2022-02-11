@@ -119,7 +119,7 @@ impl Operator for ProjectOperator {
         };
 
         if let Ok(project_namespace) = Api::<Namespace>::all(client.clone())
-            .get(&project_name)
+            .get(project_name)
             .await
         {
             if let Some(owner_references) = project_namespace.metadata.owner_references {
@@ -190,7 +190,7 @@ pub async fn get_manifests_secret(
     secret_name: &str,
     namespace: &str,
 ) -> anyhow::Result<Secret> {
-    let secret_api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), &namespace);
+    let secret_api: kube::Api<Secret> = kube::Api::namespaced(client.to_owned(), namespace);
 
     let secret = secret_api.get(secret_name).await?;
 

@@ -25,7 +25,7 @@ use self_service_operators::project::Project;
 use self_service_operators::project::ProjectSpec;
 
 use crate::project;
-use crate::project::WaitForState;
+use crate::WaitForState;
 
 #[tokio::test]
 #[serial]
@@ -86,11 +86,11 @@ async fn it_rejects_manifests_with_an_unset_namespace() -> anyhow::Result<()> {
 async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<()> {
     let (client, _) = project::before_each().await?;
 
-    let name = project::random_name("apply-manifest");
+    let name = crate::random_name("apply-manifest");
     let mut project = project::install_project(&client, &name).await?;
 
     let api = kube::Api::<ServiceAccount>::namespaced(client.clone(), &name);
-    project::wait_for_state(&api, &"default".to_string(), WaitForState::Created).await?;
+    crate::wait_for_state(&api, &"default".to_string(), WaitForState::Created).await?;
 
     let mut default_sa_secret;
     loop {
@@ -107,12 +107,12 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
 
     {
         let api = kube::Api::<Secret>::namespaced(client.clone(), &name);
-        project::wait_for_state(&api, &default_secret_name, WaitForState::Created).await?;
+        crate::wait_for_state(&api, default_secret_name, WaitForState::Created).await?;
     }
 
     // Create a pod from YAML
     let pod_manifest = include_str!("../fixtures/pod2.yaml");
-    let templated_manifest = project.render(&pod_manifest, "foo");
+    let templated_manifest = project.render(pod_manifest, "foo");
     apply_manifests::apply_yaml_manifest(
         &client,
         &templated_manifest.unwrap(),
@@ -132,7 +132,7 @@ async fn it_should_correctly_create_yaml_manifest_resources() -> anyhow::Result<
     assert!(
         &pod.is_ok(),
         "pod should have been created successfully: {}",
-        pod.err().unwrap().to_string()
+        pod.err().unwrap()
     );
 
     assert!(

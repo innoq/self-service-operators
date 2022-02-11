@@ -143,7 +143,7 @@ async fn main() -> anyhow::Result<()> {
         println!(
             "{}",
             krator::admission::WebhookResources::from(Project::admission_webhook_resources(
-                &namespace
+                namespace
             ))
         );
 
@@ -163,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
     if !opts.skip_install_admission_controller_manifests {
         info!("installing admission controller resources");
         let resources = krator::admission::WebhookResources::from(
-            Project::admission_webhook_resources(&namespace),
+            Project::admission_webhook_resources(namespace),
         );
 
         resources.apply(&client).await?;
@@ -171,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
 
     let tracker = operator::ProjectOperator::new(
         client,
-        &namespace,
+        namespace,
         DEFAULT_MANIFESTS_SECRET,
         Duration::from_secs(5),
     )
